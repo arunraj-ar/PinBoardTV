@@ -24,7 +24,9 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>('tv_board');
   const [householdState, setHouseholdState] = useState(storageSync.getState());
   const [, setSession] = useState<MemberSession | null>(storageSync.getSession());
-  const [showDevBar, setShowDevBar] = useState<boolean>(true);
+  // Only enable dev panel in Vite development mode, OR if explicitly requested via ?dev=true in URL
+  const isDevMode = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.search.includes('dev=true'));
+  const [showDevBar, setShowDevBar] = useState<boolean>(isDevMode);
   const [voiceInput, setVoiceInput] = useState<string>('');
   const [showVoiceModal, setShowVoiceModal] = useState<boolean>(false);
 
@@ -65,8 +67,9 @@ export function App() {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
-  // Keyboard shortcut: Press 'H' to toggle floating dev bar during presentation recording
+  // Keyboard shortcut: Press 'H' to toggle floating dev bar if isDevMode
   useEffect(() => {
+    if (!isDevMode) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         (e.key === 'h' || e.key === 'H') &&
@@ -77,7 +80,7 @@ export function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isDevMode]);
 
   const navigateTo = (newRoute: AppRoute, urlPath: string) => {
     playPinPopSound();
@@ -155,8 +158,8 @@ export function App() {
         />
       )}
 
-      {/* Collapsible Floating Dev Switcher Bar (Hidden during fullscreen TV demo with 'H' key) */}
-      {showDevBar && (
+      {/* Collapsible Floating Dev Switcher Bar (Only rendered in local development or with ?dev=true) */}
+      {isDevMode && showDevBar && (
         <aside
           aria-label="Development switcher"
           className="fixed bottom-4 left-4 z-50 bg-stone-900/90 backdrop-blur-md border border-white/20 p-2.5 rounded-2xl shadow-2xl flex items-center space-x-2 text-xs font-bold"

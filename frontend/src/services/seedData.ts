@@ -420,13 +420,13 @@ export const SEED_NOTES: PinNote[] = [
   },
 ];
 
-export function createInitialHouseholdState(): HouseholdState {
+export function createDemoHouseholdState(): HouseholdState {
   return {
     householdId: INITIAL_HOUSEHOLD_ID,
     householdName: 'Living Room Family Hub',
     hostSecret: 'sec_livingroom_host_secret_9988',
     currentOtp: '482910',
-    otpExpiresAt: Date.now() + 15 * 60 * 1000, // 15 mins from now
+    otpExpiresAt: Date.now() + 15 * 60 * 1000,
     autoApprove: true,
     screensaverEnabled: true,
     autonomousAiOrganize: true,
@@ -434,7 +434,36 @@ export function createInitialHouseholdState(): HouseholdState {
     hostPublicIp: '198.51.100.42',
     members: SEED_MEMBERS,
     notes: SEED_NOTES,
-    seedVersion: 3,
+    seedVersion: 4,
     isConfigured: true,
   };
 }
+
+export function createCleanHouseholdState(): HouseholdState {
+  return {
+    householdId: `hh_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
+    householdName: 'My Family PinBoard',
+    hostSecret: `sec_${Date.now().toString(36)}`,
+    currentOtp: Math.floor(100000 + Math.random() * 900000).toString(),
+    otpExpiresAt: Date.now() + 15 * 60 * 1000,
+    autoApprove: true,
+    screensaverEnabled: true,
+    autonomousAiOrganize: true,
+    theme: 'cork',
+    members: [],
+    notes: [],
+    seedVersion: 4,
+    isConfigured: false,
+  };
+}
+
+export function createInitialHouseholdState(): HouseholdState {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('demo') === 'true' || params.get('seed') === 'true') {
+      return createDemoHouseholdState();
+    }
+  }
+  return createCleanHouseholdState();
+}
+

@@ -11,6 +11,7 @@ import {
   CloudSun,
   X,
   Tv,
+  Smartphone,
   ChevronDown,
   ChevronRight,
   Check,
@@ -110,6 +111,14 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
       setCurrentPage(Math.max(0, totalPages - 1));
     }
   }, [totalPages, currentPage]);
+
+  // If notes become empty, shift focus to header settings/voice
+  useEffect(() => {
+    if (state.notes.length === 0 && focusArea === 'board') {
+      setFocusArea('header');
+      setHeaderFocusIndex(1); // focus on Settings
+    }
+  }, [state.notes.length, focusArea]);
 
   // Idle Screensaver Inactivity Timeout (30 seconds)
   useEffect(() => {
@@ -837,41 +846,71 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
 
       {/* 16:9 Full Widescreen Canvas: Horizontal Slide Carousel (15 items per page) */}
       <main className="flex-1 pb-4 pt-2 px-2 flex flex-col justify-center w-full overflow-hidden relative">
-        <div
-          className="flex transition-transform duration-500 ease-out h-[81vh] w-full"
-          style={{ transform: `translateX(-${currentPage * 100}%)` }}
-        >
-          {pages.map((pageNotes, pIdx) => (
-            <div
-              key={`board_page_${pIdx}`}
-              className="w-full h-full shrink-0 px-10 py-2.5 grid gap-4"
-              style={{
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                gridTemplateRows: `repeat(${cols === 5 ? 3 : 2}, minmax(0, 1fr))`,
-              }}
-            >
-              {pageNotes.map((note, nIdx) => {
-                const isFocused = focusArea === 'board' && currentPage === pIdx && nIdx === focusedIndex;
-                return (
-                  <NoteCard
-                    key={note.id}
-                    note={note}
-                    density={isCompact ? 'compact' : 'spacious'}
-                    isFocused={isFocused}
-                    onClick={() => {
-                      playPinPopSound();
-                      setFocusArea('board');
-                      setCurrentPage(pIdx);
-                      setFocusedIndex(nIdx);
-                      setFocusedModalNote(note);
-                      setModalFocusIndex(0);
-                    }}
-                  />
-                );
-              })}
+        {state.notes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center p-10 max-w-2xl mx-auto bg-stone-900/80 backdrop-blur-md rounded-3xl border border-white/15 shadow-2xl space-y-6">
+            <div className="w-20 h-20 rounded-full bg-amber-400/20 border-2 border-amber-400/50 flex items-center justify-center text-amber-300 shadow-[0_0_30px_rgba(251,191,36,0.3)]">
+              <Sparkles className="w-10 h-10 animate-pulse" />
             </div>
-          ))}
-        </div>
+            <div className="space-y-2">
+              <h2 className="text-3xl font-black text-white tracking-wide">Your PinBoard is Ready!</h2>
+              <p className="text-stone-300 text-lg">
+                Start adding notes, groceries, chores, or photos to see them appear live on this screen.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-left pt-2 w-full">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-start space-x-3">
+                <Smartphone className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-white text-base">Mobile Companion</div>
+                  <div className="text-stone-400 text-sm">Open Settings on this TV to scan the QR code with your phone.</div>
+                </div>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-start space-x-3">
+                <Mic className="w-6 h-6 text-purple-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-white text-base">Alexa Voice</div>
+                  <div className="text-stone-400 text-sm">Say &ldquo;Alexa, ask Pin Board to add milk to groceries&rdquo; or click Voice Pin above.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="flex transition-transform duration-500 ease-out h-[81vh] w-full"
+            style={{ transform: `translateX(-${currentPage * 100}%)` }}
+          >
+            {pages.map((pageNotes, pIdx) => (
+              <div
+                key={`board_page_${pIdx}`}
+                className="w-full h-full shrink-0 px-10 py-2.5 grid gap-4"
+                style={{
+                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                  gridTemplateRows: `repeat(${cols === 5 ? 3 : 2}, minmax(0, 1fr))`,
+                }}
+              >
+                {pageNotes.map((note, nIdx) => {
+                  const isFocused = focusArea === 'board' && currentPage === pIdx && nIdx === focusedIndex;
+                  return (
+                    <NoteCard
+                      key={note.id}
+                      note={note}
+                      density={isCompact ? 'compact' : 'spacious'}
+                      isFocused={isFocused}
+                      onClick={() => {
+                        playPinPopSound();
+                        setFocusArea('board');
+                        setCurrentPage(pIdx);
+                        setFocusedIndex(nIdx);
+                        setFocusedModalNote(note);
+                        setModalFocusIndex(0);
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Page Indicator Pill */}
         {totalPages > 1 && (

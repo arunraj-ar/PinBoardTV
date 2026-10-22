@@ -9,10 +9,14 @@ import type {
   MemberSession,
   NoteColor,
 } from '../types/pinboard';
-import { createInitialHouseholdState } from './seedData';
+import {
+  createInitialHouseholdState,
+  createDemoHouseholdState,
+  createCleanHouseholdState,
+} from './seedData';
 import { awsCloudDriver } from './awsCloudDriver';
 
-const LOCAL_STORAGE_KEY = 'pinboard_household_state';
+const LOCAL_STORAGE_KEY = 'pinboard_household_state_v4';
 const SESSION_STORAGE_KEY = 'pinboard_member_session';
 const BROADCAST_CHANNEL_NAME = 'pinboard-tv-sync';
 
@@ -53,17 +57,21 @@ class StorageSyncService {
   private loadFromStorage(): HouseholdState {
     if (typeof window === 'undefined') return createInitialHouseholdState();
     try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('demo') === 'true' || params.get('seed') === 'true') {
+        const demoState = createDemoHouseholdState();
+        this.saveToStorage(demoState);
+        return demoState;
+      }
+      if (params.get('clean') === 'true' || params.get('reset') === 'true') {
+        const cleanState = createCleanHouseholdState();
+        this.saveToStorage(cleanState);
+        return cleanState;
+      }
+
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && (!parsed.seedVersion || parsed.seedVersion < 3)) {
-          const initial = createInitialHouseholdState();
-          const existingIds = new Set(parsed.notes.map((n: PinNote) => n.id));
-          const missing = initial.notes.filter((n) => !existingIds.has(n.id));
-          parsed.notes = [...parsed.notes, ...missing];
-          parsed.seedVersion = 3;
-          this.saveToStorage(parsed);
-        }
         if (parsed.isConfigured === undefined) {
           parsed.isConfigured = Boolean(parsed.members && parsed.members.length > 0);
           this.saveToStorage(parsed);
@@ -471,21 +479,7 @@ class StorageSyncService {
   }
 
   public startFreshHouseholdSetup(): void {
-    this.currentState = {
-      householdId: `hh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      householdName: 'My Family PinBoard',
-      hostSecret: `sec_${Date.now()}`,
-      currentOtp: Math.floor(100000 + Math.random() * 900000).toString(),
-      otpExpiresAt: Date.now() + 15 * 60 * 1000,
-      autoApprove: true,
-      screensaverEnabled: true,
-      autonomousAiOrganize: true,
-      theme: 'cork',
-      members: [], // Empty members array waiting for first admin/member
-      notes: createInitialHouseholdState().notes,
-      seedVersion: 3,
-      isConfigured: false,
-    };
+    this.currentState = createCleanHouseholdState();
     this.saveToStorage(this.currentState);
     this.clearSession();
     this.broadcast({ type: 'STATE_REPLACED', payload: { ...this.currentState } });
@@ -493,6 +487,18 @@ class StorageSyncService {
 
   public resetToDefaults(): void {
     this.currentState = createInitialHouseholdState();
+    this.saveToStorage(this.currentState);
+    this.broadcast({ type: 'STATE_REPLACED', payload: { ...this.currentState } });
+  }
+
+  public loadDemoData(): void {
+    this.currentState = createDemoHouseholdState();
+    this.saveToStorage(this.currentState);
+    this.broadcast({ type: 'STATE_REPLACED', payload: { ...this.currentState } });
+  }
+
+  public clearAllNotes(): void {
+    this.currentState.notes = [];
     this.saveToStorage(this.currentState);
     this.broadcast({ type: 'STATE_REPLACED', payload: { ...this.currentState } });
   }

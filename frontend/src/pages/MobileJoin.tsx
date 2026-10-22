@@ -18,7 +18,7 @@ const COLOR_OPTIONS: { id: NoteColor; label: string; hex: string; bg: string }[]
 ];
 
 export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
-  const [householdId, setHouseholdId] = useState<string>('hh_family_livingroom');
+  const [householdId, setHouseholdId] = useState<string>(() => storageSync.getState().householdId);
   const [otpCode, setOtpCode] = useState<string>('');
   const [displayName, setDisplayName] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<NoteColor>('orange');
