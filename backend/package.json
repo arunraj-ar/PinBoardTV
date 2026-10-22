@@ -1,0 +1,27 @@
+{
+  "name": "pinboard-tv-backend",
+  "version": "1.0.0",
+  "description": "Serverless AWS Backend for PinBoardTV (DynamoDB, S3, Bedrock, API Gateway, WebSockets, Alexa)",
+  "main": "dist/http.js",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "deploy": "bash scripts/deploy.sh"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.758.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.758.0",
+    "@aws-sdk/client-dynamodb": "^3.758.0",
+    "@aws-sdk/client-s3": "^3.758.0",
+    "@aws-sdk/lib-dynamodb": "^3.758.0",
+    "@aws-sdk/s3-request-presigner": "^3.758.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
+    "@types/node": "^22.13.9",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.2"
+  }
+}

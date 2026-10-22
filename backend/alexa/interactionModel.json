@@ -1,0 +1,114 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "pin board",
+      "intents": [
+        {
+          "name": "AddGroceryIntent",
+          "slots": [
+            {
+              "name": "item",
+              "type": "AMAZON.Food"
+            }
+          ],
+          "samples": [
+            "add {item} to the grocery list",
+            "add {item} to my grocery list",
+            "add {item} to groceries",
+            "put {item} on the grocery list",
+            "buy {item}",
+            "add {item}"
+          ]
+        },
+        {
+          "name": "AddNoteIntent",
+          "slots": [
+            {
+              "name": "member",
+              "type": "AMAZON.FirstName"
+            },
+            {
+              "name": "task",
+              "type": "TASK_DESCRIPTION"
+            }
+          ],
+          "samples": [
+            "remind {member} to {task}",
+            "tell {member} to {task}",
+            "pin a chore for {member} to {task}",
+            "assign {member} to {task}",
+            "pin a note to {task}",
+            "add note {task}",
+            "pin note {task}",
+            "leave a note {task}"
+          ]
+        },
+        {
+          "name": "ReadGroceryListIntent",
+          "slots": [],
+          "samples": [
+            "what is on my grocery list",
+            "what's on my grocery list",
+            "what is on the grocery list",
+            "read my grocery list",
+            "read the groceries",
+            "what do we need from the store"
+          ]
+        },
+        {
+          "name": "LinkHouseholdIntent",
+          "slots": [
+            {
+              "name": "sixDigitPin",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "my household code is {sixDigitPin}",
+            "my code is {sixDigitPin}",
+            "connect with code {sixDigitPin}",
+            "link with code {sixDigitPin}",
+            "pair with {sixDigitPin}"
+          ]
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "TASK_DESCRIPTION",
+          "values": [
+            { "name": { "value": "walk the dog" } },
+            { "name": { "value": "take out the trash" } },
+            { "name": { "value": "clean the kitchen" } },
+            { "name": { "value": "do the laundry" } },
+            { "name": { "value": "wash the dishes" } },
+            { "name": { "value": "finish homework" } },
+            { "name": { "value": "water the plants" } },
+            { "name": { "value": "mow the lawn" } },
+            { "name": { "value": "feed the cat" } },
+            { "name": { "value": "clean bedroom" } },
+            { "name": { "value": "pick up the dry cleaning" } },
+            { "name": { "value": "vacuum the living room" } },
+            { "name": { "value": "plumber coming tomorrow" } },
+            { "name": { "value": "call grandma this weekend" } }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "name": "PinBoard TV",
+          "summary": "Voice companion for your living room PinBoard TV ambient family hub.",
+          "description": "Add groceries, pin chores, and leave sticky notes on your Fire TV pinboard using your voice with Alexa.",
+          "examplePhrases": [
+            "Alexa, ask Pin Board to add oat milk to the grocery list",
+            "Alexa, tell Pin Board to remind Alex to walk the dog",
+            "Alexa, ask Pin Board what is on my grocery list"
+          ],
+          "keywords": [
+            "pinboard",
+            "groceries",
+            "chores",
+            "family",
+            "fire tv",
+            "screensaver"
+          ]
+        }
+      },
+      "isAvailableWorldwide": true,
+      "testingInstructions": "Open Fire TV PinBoardTV app to get the 6-digit code. Say 'Alexa, tell Pin Board my code is 123456' to pair.",
+      "category": "ORGANIZERS_AND_ASSISTANTS",
+      "distributionCountries": []
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "arn:aws:lambda:us-east-1:123456789012:function:PinBoardAlexaFunction"
+        },
+        "interfaces": []
+      }
+    },
+    "manifestVersion": "1.0",
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": false,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false
+    }
+  }
+}

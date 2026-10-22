@@ -1,0 +1,338 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: PinBoardTV — Serverless AWS Backend (DynamoDB, S3, Bedrock, API Gateway, WebSockets, Alexa)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    Description: Deployment stage environment
+  BedrockModelId:
+    Type: String
+    Default: amazon.nova-micro-v1:0
+    Description: Amazon Bedrock model ID for conversational note & chore parsing
+
+Globals:
+  Function:
+    Timeout: 15
+    MemorySize: 256
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # 1. DynamoDB Single-Table Storage (100% Free Tier, Pay-Per-Request)
+  # ---------------------------------------------------------------------------
+  PinBoardTVTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "PinBoardTVTable-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ---------------------------------------------------------------------------
+  # 2. S3 Bucket for Polaroid Photos (with CORS & Public Read)
+  # ---------------------------------------------------------------------------
+  PinBoardPhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "pinboard-photos-${AWS::AccountId}-${AWS::Region}-${Environment}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  # ---------------------------------------------------------------------------
+  # 3. HTTP API Gateway v2
+  # ---------------------------------------------------------------------------
+  PinBoardHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Household-Id
+          - X-Member-Token
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+        MaxAge: 3600
+
+  # ---------------------------------------------------------------------------
+  # 4. HTTP Lambda Function (REST API Handlers)
+  # ---------------------------------------------------------------------------
+  PinBoardApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "PinBoardApiFunction-${Environment}"
+      CodeUri: ./dist
+      Handler: http.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PinBoardTVTable
+          PHOTOS_BUCKET_NAME: !Ref PinBoardPhotosBucket
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          WEBSOCKET_API_ENDPOINT: !Sub "https://${PinBoardWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PinBoardTVTable
+        - S3CrudPolicy:
+            BucketName: !Sub "pinboard-photos-${AWS::AccountId}-${AWS::Region}-${Environment}"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PinBoardWebSocketApi}/*"
+      Events:
+        HttpApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PinBoardHttpApi
+            Path: /{proxy+}
+            Method: ANY
+        HttpApiRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PinBoardHttpApi
+            Path: /
+            Method: ANY
+
+  # ---------------------------------------------------------------------------
+  # 5. WebSocket API Gateway v2
+  # ---------------------------------------------------------------------------
+  PinBoardWebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "PinBoardWebSocketApi-${Environment}"
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  PinBoardWsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "PinBoardWsFunction-${Environment}"
+      CodeUri: ./dist
+      Handler: websocket.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PinBoardTVTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PinBoardTVTable
+
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref PinBoardWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PinBoardWsFunction.Arn}/invocations"
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PinBoardWebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${ConnectIntegration}"
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PinBoardWebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${ConnectIntegration}"
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PinBoardWebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${ConnectIntegration}"
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref PinBoardWebSocketApi
+      StageName: prod
+      AutoDeploy: true
+
+  WsLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PinBoardWsFunction
+      Principal: apigateway.amazonaws.com
+
+  # ---------------------------------------------------------------------------
+  # 6. Alexa Custom Skill Lambda Function
+  # ---------------------------------------------------------------------------
+  PinBoardAlexaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "PinBoardAlexaFunction-${Environment}"
+      CodeUri: ./dist
+      Handler: alexa.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PinBoardTVTable
+          WEBSOCKET_API_ENDPOINT: !Sub "https://${PinBoardWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PinBoardTVTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PinBoardWebSocketApi}/*"
+      Events:
+        AlexaSkillEvent:
+          Type: AlexaSkill
+
+  # ---------------------------------------------------------------------------
+  # 7. S3 Bucket for Frontend Web Hosting
+  # ---------------------------------------------------------------------------
+  PinBoardWebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "pinboard-web-${AWS::AccountId}-${AWS::Region}-${Environment}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+
+  PinBoardWebOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "PinBoardWebOAC-${AWS::Region}-${Environment}"
+        Description: Origin Access Control for PinBoardTV Web Frontend
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ---------------------------------------------------------------------------
+  # 8. CloudFront Global CDN for HTTPS & SPA Routing with OAC
+  # ---------------------------------------------------------------------------
+  PinBoardWebDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "PinBoardTV Web Companion (${Environment})"
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt PinBoardWebBucket.RegionalDomainName
+            OriginAccessControlId: !Ref PinBoardWebOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  PinBoardWebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PinBoardWebBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::pinboard-web-${AWS::AccountId}-${AWS::Region}-${Environment}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${PinBoardWebDistribution}"
+
+Outputs:
+  HttpApiUrl:
+    Description: HTTP REST API Base URL
+    Value: !Sub "https://${PinBoardHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+    Export:
+      Name: !Sub "${AWS::StackName}-HttpApiUrl"
+
+  WebSocketApiUrl:
+    Description: WebSocket Real-Time URL
+    Value: !Sub "wss://${PinBoardWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Export:
+      Name: !Sub "${AWS::StackName}-WebSocketApiUrl"
+
+  PhotosBucketName:
+    Description: S3 Photos Bucket Name
+    Value: !Ref PinBoardPhotosBucket
+
+  AlexaFunctionArn:
+    Description: Alexa Skill Target Lambda Function ARN
+    Value: !GetAtt PinBoardAlexaFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AlexaFunctionArn"
+
+  FrontendUrl:
+    Description: CloudFront Global HTTPS Frontend URL
+    Value: !Sub "https://${PinBoardWebDistribution.DomainName}"
+    Export:
+      Name: !Sub "${AWS::StackName}-FrontendUrl"

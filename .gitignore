@@ -3,3 +3,6 @@ docs/
 node_modules/
 scratch/
 .playwright-mcp/
+dist/
+backend/dist/
+.aws-sam/

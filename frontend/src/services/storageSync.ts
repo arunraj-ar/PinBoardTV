@@ -10,6 +10,7 @@ import type {
   NoteColor,
 } from '../types/pinboard';
 import { createInitialHouseholdState } from './seedData';
+import { awsCloudDriver } from './awsCloudDriver';
 
 const LOCAL_STORAGE_KEY = 'pinboard_household_state';
 const SESSION_STORAGE_KEY = 'pinboard_member_session';
@@ -25,6 +26,28 @@ class StorageSyncService {
   constructor() {
     this.currentState = this.loadFromStorage();
     this.initBroadcastChannel();
+    this.initCloudSync();
+  }
+
+  private initCloudSync() {
+    if (!awsCloudDriver.isConfigured() || typeof window === 'undefined') return;
+    try {
+      awsCloudDriver.connectWebSocket(this.currentState.householdId, (event) => {
+        this.handleRemoteEvent(event);
+      });
+      awsCloudDriver
+        .getHouseholdState(this.currentState.householdId)
+        .then((cloudState) => {
+          if (cloudState && cloudState.notes) {
+            this.currentState = cloudState;
+            this.saveToStorage(cloudState);
+            this.notifySubscribers({ type: 'STATE_REPLACED', payload: cloudState });
+          }
+        })
+        .catch((e) => console.warn('Could not sync with cloud backend:', e));
+    } catch (e) {
+      console.warn('Failed to initialize cloud sync:', e);
+    }
   }
 
   private loadFromStorage(): HouseholdState {
@@ -254,6 +277,11 @@ class StorageSyncService {
 
     this.currentState.notes = [newNote, ...this.currentState.notes];
     this.broadcast({ type: 'NOTE_CREATED', payload: newNote });
+
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.createNote(newNote).catch((e) => console.warn('Cloud createNote failed:', e));
+    }
+
     return newNote;
   }
 
@@ -267,11 +295,19 @@ class StorageSyncService {
     );
 
     this.broadcast({ type: 'NOTE_UPDATED', payload: { id, changes: modified } });
+
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.updateNote(this.currentState.householdId, id, modified).catch((e) => console.warn('Cloud updateNote failed:', e));
+    }
   }
 
   public deleteNote(id: string): void {
     this.currentState.notes = this.currentState.notes.filter((n) => n.id !== id);
     this.broadcast({ type: 'NOTE_DELETED', payload: { id } });
+
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.deleteNote(this.currentState.householdId, id).catch((e) => console.warn('Cloud deleteNote failed:', e));
+    }
   }
 
   public toggleChecklistItem(noteId: string, itemId: string): boolean {
@@ -321,6 +357,11 @@ class StorageSyncService {
     this.currentState.otpExpiresAt = otpExpiresAt;
 
     this.broadcast({ type: 'OTP_ROTATED', payload: { otpCode, otpExpiresAt } });
+
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.rotateOtp(this.currentState.householdId).catch((e) => console.warn('Cloud rotateOtp failed:', e));
+    }
+
     return { otpCode, otpExpiresAt };
   }
 
@@ -417,6 +458,10 @@ class StorageSyncService {
     this.currentState.householdName = cleanName;
     this.saveToStorage(this.currentState);
     this.broadcast({ type: 'HOUSEHOLD_NAME_UPDATED', payload: { name: cleanName } });
+
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.updateHouseholdName(this.currentState.householdId, cleanName).catch((e) => console.warn('Cloud updateHouseholdName failed:', e));
+    }
   }
 
   public setIsConfigured(isConfigured: boolean): void {
