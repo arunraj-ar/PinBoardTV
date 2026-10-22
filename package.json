@@ -1,0 +1,11 @@
+{
+  "name": "pinboard-tv-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PinBoardTV — Ambient Family Hub for Fire TV, Mobile & Alexa",
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "preview": "npm run preview --prefix frontend"
+  }
+}

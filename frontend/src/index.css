@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-handwriting: 'Caveat', cursive, sans-serif;
+
+  --color-cork-bg: #805333;
+  --color-cork-pattern: #674024;
+  --color-cork-light: #9a6540;
+
+  --color-slate-bg: #1c1f26;
+  --color-slate-dark: #121418;
+}
+
+:root {
+  font-family: 'Outfit', sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #1c1f26;
+}
+
+/* Corkboard procedural texture using CSS radial gradients */
+.corkboard-canvas {
+  background-color: #815234;
+  background-image: 
+    radial-gradient(#976341 15%, transparent 16%),
+    radial-gradient(#6c4226 15%, transparent 16%),
+    radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    radial-gradient(rgba(0, 0, 0, 0.12) 1px, transparent 1px);
+  background-size: 60px 60px, 60px 60px, 20px 20px, 30px 30px;
+  background-position: 0 0, 30px 30px, 10px 10px, 15px 15px;
+}
+
+/* Brushed Slate dark board texture */
+.slateboard-canvas {
+  background-color: #181b22;
+  background-image: 
+    radial-gradient(ellipse at 50% 30%, rgba(45, 52, 68, 0.35) 0%, transparent 70%),
+    radial-gradient(circle at 80% 80%, rgba(30, 36, 48, 0.4) 0%, transparent 50%);
+}
+
+/* Ambient vignette overlay for TV depth and contrast */
+.vignette-overlay {
+  box-shadow: inset 0 0 160px rgba(0, 0, 0, 0.7);
+}
+
+/* Paper skeuomorphic drop shadow */
+.paper-shadow {
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 8px 24px -4px rgba(0, 0, 0, 0.28),
+    0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.polaroid-shadow {
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.2),
+    0 16px 32px -4px rgba(0, 0, 0, 0.35),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Dog-ear folded corner for sticky notes */
+.dogear-folded {
+  position: relative;
+  overflow: hidden;
+}
+.dogear-folded::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 16px 16px;
+  border-color: transparent transparent rgba(0, 0, 0, 0.15) transparent;
+}
+
+/* Fire TV 10-Foot Spatial D-Pad Focus State */
+.tv-focus-target {
+  outline: none !important;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms ease, ring-color 160ms ease;
+}
+
+.tv-focus-target:focus-visible,
+.tv-focus-target[data-focused="true"] {
+  transform: scale(1.04) translateY(-4px);
+  z-index: 40;
+  box-shadow: 0 0 0 4px #fbbf24, 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 25px rgba(251, 191, 36, 0.45);
+}
+
+/* Burn-in protection: 60s subtle pixel shift animation */
+@keyframes tvPixelShift {
+  0% { transform: translate(0px, 0px); }
+  25% { transform: translate(2px, -2px); }
+  50% { transform: translate(-2px, 2px); }
+  75% { transform: translate(2px, 2px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+.animate-pixel-shift {
+  animation: tvPixelShift 60s ease-in-out infinite;
+}
+
+/* Custom scrollbar for mobile lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
