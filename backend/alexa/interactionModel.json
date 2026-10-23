@@ -72,6 +72,26 @@
           ]
         },
         {
+          "name": "SetHouseholdNameIntent",
+          "slots": [
+            {
+              "name": "householdName",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "rename household to {householdName}",
+            "rename the household to {householdName}",
+            "change household name to {householdName}",
+            "set household name to {householdName}",
+            "set the household name to {householdName}",
+            "change name to {householdName}",
+            "set board name to {householdName}",
+            "rename board to {householdName}",
+            "name the board {householdName}"
+          ]
+        },
+        {
           "name": "AMAZON.CancelIntent",
           "samples": []
         },

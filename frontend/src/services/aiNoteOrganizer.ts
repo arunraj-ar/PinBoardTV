@@ -137,9 +137,19 @@ export function organizeNotesIntoPages(
     }
 
     if (page.length > 0) {
+      // AI Priority Reordering: Sort notes on the page by score descending
+      // Pinned, high priority, and urgent deadline notes land in prime top-left grid cells
+      page.sort((a, b) => scoreNote(b) - scoreNote(a));
       pages.push(page);
     }
   }
 
   return pages.length > 0 ? pages : [[]];
+}
+
+/**
+ * Sorts a flat list of notes by AI score (pinned, priority, recency, urgency keywords)
+ */
+export function sortNotesByAiScore(notes: PinNote[]): PinNote[] {
+  return [...notes].sort((a, b) => scoreNote(b) - scoreNote(a));
 }

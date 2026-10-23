@@ -9,11 +9,12 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
+
+
+tasks.named('wrapper') {
+    gradleVersion = '8.6'
+    distributionType = Wrapper.DistributionType.BIN
+    validateDistributionUrl = false
 }
 
 task clean(type: Delete) {

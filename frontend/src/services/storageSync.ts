@@ -7,6 +7,8 @@ import type {
   ChecklistItem,
   SyncEvent,
   MemberSession,
+  SavedHouseholdSession,
+  HouseholdRegistry,
   NoteColor,
 } from '../types/pinboard';
 import {
@@ -17,8 +19,10 @@ import {
 import { awsCloudDriver } from './awsCloudDriver';
 import { cleanGroceryItemText } from './voiceNlpParser';
 
-const LOCAL_STORAGE_KEY = 'pinboard_household_state_v4';
-const SESSION_STORAGE_KEY = 'pinboard_member_session';
+const LEGACY_STORAGE_KEY = 'pinboard_household_state_v4';
+const LEGACY_SESSION_KEY = 'pinboard_member_session';
+const REGISTRY_STORAGE_KEY = 'pinboard_household_registry_v1';
+const STATE_STORAGE_PREFIX = 'pinboard_state_';
 const BROADCAST_CHANNEL_NAME = 'pinboard-tv-sync';
 
 type ChangeSubscriber = (state: HouseholdState, event?: SyncEvent) => void;
@@ -75,6 +79,27 @@ class StorageSyncService {
     }
   }
 
+  public loadStateForHousehold(householdId: string): HouseholdState {
+    if (typeof window === 'undefined') return createInitialHouseholdState();
+    try {
+      const saved = localStorage.getItem(`${STATE_STORAGE_PREFIX}${householdId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.householdId === householdId) {
+          if (parsed.isConfigured === undefined) {
+            parsed.isConfigured = Boolean(parsed.members && parsed.members.length > 0);
+          }
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn(`Failed to load state for household ${householdId}:`, e);
+    }
+    const clean = createCleanHouseholdState();
+    clean.householdId = householdId;
+    return clean;
+  }
+
   private loadFromStorage(): HouseholdState {
     if (typeof window === 'undefined') return createInitialHouseholdState();
     try {
@@ -90,7 +115,24 @@ class StorageSyncService {
         return cleanState;
       }
 
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+      const hashParams = new URLSearchParams(hashQuery);
+      const targetHh = params.get('hh') || params.get('householdId') || hashParams.get('hh') || hashParams.get('householdId');
+
+      if (targetHh) {
+        const hhState = this.loadStateForHousehold(targetHh);
+        this.saveToStorage(hhState);
+        return hhState;
+      }
+
+      const registry = this.getRegistry();
+      if (registry.activeHouseholdId) {
+        const hhState = this.loadStateForHousehold(registry.activeHouseholdId);
+        this.saveToStorage(hhState);
+        return hhState;
+      }
+
+      const saved = localStorage.getItem(LEGACY_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.isConfigured === undefined) {
@@ -115,7 +157,8 @@ class StorageSyncService {
   private saveToStorage(state: HouseholdState) {
     if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(`${STATE_STORAGE_PREFIX}${state.householdId}`, JSON.stringify(state));
+      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
       console.warn('Failed to save pinboard state to localStorage:', e);
     }
@@ -188,6 +231,11 @@ class StorageSyncService {
       case 'HOUSEHOLD_NAME_UPDATED':
         this.currentState.householdName = event.payload.name;
         break;
+      case 'WAKE_BOARD':
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pinboard:wake', { detail: event.payload }));
+        }
+        break;
     }
     this.saveToStorage(this.currentState);
     this.notifySubscribers(event);
@@ -233,24 +281,205 @@ class StorageSyncService {
     return [...this.currentState.members];
   }
 
-  public getSession(): MemberSession | null {
+  private getLegacySession(): MemberSession | null {
     if (typeof window === 'undefined') return null;
     try {
-      const data = localStorage.getItem(SESSION_STORAGE_KEY);
+      const data = localStorage.getItem(LEGACY_SESSION_KEY);
       return data ? JSON.parse(data) : null;
     } catch {
       return null;
     }
   }
 
-  public saveSession(session: MemberSession) {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  public getRegistry(): HouseholdRegistry {
+    if (typeof window === 'undefined') {
+      return { activeHouseholdId: null, households: {} };
+    }
+    try {
+      const data = localStorage.getItem(REGISTRY_STORAGE_KEY);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch (e) {
+      console.warn('Failed to parse household registry:', e);
+    }
+
+    // Migrate from legacy session key if present
+    const legacySession = this.getLegacySession();
+    const registry: HouseholdRegistry = {
+      activeHouseholdId: legacySession ? legacySession.householdId : null,
+      lastDisplayName: legacySession ? legacySession.displayName : undefined,
+      households: {},
+    };
+    if (legacySession) {
+      registry.households[legacySession.householdId] = {
+        householdId: legacySession.householdId,
+        householdName: legacySession.householdName || 'My Family PinBoard',
+        memberId: legacySession.memberId,
+        memberToken: legacySession.memberToken,
+        displayName: legacySession.displayName,
+        color: legacySession.color,
+        role: legacySession.role || 'MEMBER',
+        lastVisitedAt: Date.now(),
+      };
+      this.saveRegistry(registry);
+    }
+    return registry;
   }
 
-  public clearSession() {
+  public saveRegistry(registry: HouseholdRegistry): void {
     if (typeof window === 'undefined') return;
-    localStorage.removeItem(SESSION_STORAGE_KEY);
+    try {
+      localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    } catch (e) {
+      console.warn('Failed to save household registry:', e);
+    }
+  }
+
+  public getSession(): MemberSession | null {
+    if (typeof window === 'undefined') return null;
+    const registry = this.getRegistry();
+    const activeHhId = registry.activeHouseholdId || this.currentState.householdId;
+    if (activeHhId && registry.households[activeHhId]) {
+      const saved = registry.households[activeHhId];
+      return {
+        householdId: saved.householdId,
+        householdName: saved.householdName,
+        memberId: saved.memberId,
+        memberToken: saved.memberToken,
+        displayName: saved.displayName,
+        color: saved.color,
+        role: saved.role,
+      };
+    }
+    return this.getLegacySession();
+  }
+
+  public getSessionForHousehold(householdId: string): MemberSession | null {
+    if (typeof window === 'undefined') return null;
+    const registry = this.getRegistry();
+    if (registry.households[householdId]) {
+      const saved = registry.households[householdId];
+      return {
+        householdId: saved.householdId,
+        householdName: saved.householdName,
+        memberId: saved.memberId,
+        memberToken: saved.memberToken,
+        displayName: saved.displayName,
+        color: saved.color,
+        role: saved.role,
+      };
+    }
+    return null;
+  }
+
+  public saveSession(session: MemberSession, householdName?: string) {
+    if (typeof window === 'undefined') return;
+    const registry = this.getRegistry();
+    const hhName = householdName || session.householdName || this.currentState.householdName || 'My Family PinBoard';
+    registry.activeHouseholdId = session.householdId;
+    registry.lastDisplayName = session.displayName;
+    registry.households[session.householdId] = {
+      householdId: session.householdId,
+      householdName: hhName,
+      memberId: session.memberId,
+      memberToken: session.memberToken,
+      displayName: session.displayName,
+      color: session.color,
+      role: session.role || 'MEMBER',
+      lastVisitedAt: Date.now(),
+    };
+    this.saveRegistry(registry);
+    try {
+      localStorage.setItem(LEGACY_SESSION_KEY, JSON.stringify({ ...session, householdName: hhName }));
+    } catch {}
+  }
+
+  public clearSession(householdId?: string) {
+    if (typeof window === 'undefined') return;
+    const registry = this.getRegistry();
+    const targetHhId = householdId || registry.activeHouseholdId || this.currentState.householdId;
+    if (targetHhId && registry.households[targetHhId]) {
+      delete registry.households[targetHhId];
+    }
+    if (registry.activeHouseholdId === targetHhId) {
+      const remainingIds = Object.keys(registry.households);
+      registry.activeHouseholdId = remainingIds.length > 0 ? remainingIds[0] : null;
+    }
+    this.saveRegistry(registry);
+    if (!registry.activeHouseholdId) {
+      try {
+        localStorage.removeItem(LEGACY_SESSION_KEY);
+      } catch {}
+    } else {
+      const newActive = registry.households[registry.activeHouseholdId];
+      if (newActive) {
+        try {
+          localStorage.setItem(LEGACY_SESSION_KEY, JSON.stringify(newActive));
+        } catch {}
+      }
+    }
+  }
+
+  public getLastDisplayName(): string {
+    const registry = this.getRegistry();
+    if (registry.lastDisplayName) return registry.lastDisplayName;
+    const session = this.getSession();
+    return session ? session.displayName : '';
+  }
+
+  public getSavedHouseholds(): SavedHouseholdSession[] {
+    const registry = this.getRegistry();
+    return Object.values(registry.households).sort((a, b) => b.lastVisitedAt - a.lastVisitedAt);
+  }
+
+  public switchHousehold(householdId: string): void {
+    if (this.currentState.householdId === householdId) return;
+
+    this.saveToStorage(this.currentState);
+
+    const registry = this.getRegistry();
+    registry.activeHouseholdId = householdId;
+    if (registry.households[householdId]) {
+      registry.households[householdId].lastVisitedAt = Date.now();
+    }
+    this.saveRegistry(registry);
+
+    this.currentState = this.loadStateForHousehold(householdId);
+    this.saveToStorage(this.currentState);
+
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.disconnectWebSocket();
+      awsCloudDriver.connectWebSocket(householdId, (event) => {
+        this.handleRemoteEvent(event);
+      });
+      awsCloudDriver
+        .getHouseholdState(householdId, this.currentState.currentOtp, this.currentState.householdName)
+        .then((cloudState) => {
+          if (cloudState) {
+            this.currentState = { ...this.currentState, ...cloudState };
+            this.saveToStorage(this.currentState);
+            this.notifySubscribers({ type: 'STATE_REPLACED', payload: this.currentState });
+          }
+        })
+        .catch((e) => console.warn('Could not sync switched household with cloud backend:', e));
+    }
+
+    this.notifySubscribers({ type: 'STATE_REPLACED', payload: this.currentState });
+  }
+
+  public prepareTargetHousehold(householdId: string): void {
+    if (this.currentState.householdId !== householdId) {
+      this.currentState = this.loadStateForHousehold(householdId);
+      this.saveToStorage(this.currentState);
+      if (awsCloudDriver.isConfigured()) {
+        awsCloudDriver.disconnectWebSocket();
+        awsCloudDriver.connectWebSocket(householdId, (event) => {
+          this.handleRemoteEvent(event);
+        });
+      }
+      this.notifySubscribers({ type: 'STATE_REPLACED', payload: this.currentState });
+    }
   }
 
   public subscribe(callback: ChangeSubscriber): () => void {
@@ -425,7 +654,7 @@ class StorageSyncService {
     otpCode: string,
     displayName: string,
     color: NoteColor
-  ): Promise<{ success: boolean; error?: string; member?: HouseholdMember; status?: 'APPROVED' | 'PENDING' }> {
+  ): Promise<{ success: boolean; error?: string; member?: HouseholdMember; status?: 'APPROVED' | 'PENDING'; isReturningMember?: boolean }> {
     // If live AWS Cloud Backend is configured, join via cloud REST API
     if (awsCloudDriver.isConfigured()) {
       try {
@@ -436,9 +665,32 @@ class StorageSyncService {
           color,
         });
 
+        const effectiveHhId = res.householdId || householdId || this.currentState.householdId;
+        const effectiveHhName = res.householdName || this.currentState.householdName;
+
+        // If joining a different household than currently loaded, switch state context
+        if (effectiveHhId !== this.currentState.householdId) {
+          this.currentState = this.loadStateForHousehold(effectiveHhId);
+          this.currentState.householdId = effectiveHhId;
+          if (effectiveHhName) {
+            this.currentState.householdName = effectiveHhName;
+          }
+          awsCloudDriver.disconnectWebSocket();
+          awsCloudDriver.connectWebSocket(effectiveHhId, (event) => {
+            this.handleRemoteEvent(event);
+          });
+          awsCloudDriver.getHouseholdState(effectiveHhId, otpCode, effectiveHhName).then((cloudState) => {
+            if (cloudState) {
+              this.currentState = { ...this.currentState, ...cloudState };
+              this.saveToStorage(this.currentState);
+              this.notifySubscribers({ type: 'STATE_REPLACED', payload: this.currentState });
+            }
+          }).catch((e) => console.warn('Could not sync cloud state after join:', e));
+        }
+
         const newMember: HouseholdMember = {
           id: res.memberId,
-          householdId: res.householdId || householdId || this.currentState.householdId,
+          householdId: effectiveHhId,
           name: displayName.trim(),
           color,
           avatarHex:
@@ -455,19 +707,17 @@ class StorageSyncService {
 
         if (res.status === 'APPROVED' || res.role === 'HOST') {
           const session: MemberSession = {
-            householdId: res.householdId || householdId,
+            householdId: effectiveHhId,
+            householdName: effectiveHhName,
             memberId: res.memberId,
             memberToken: res.memberToken,
             displayName: newMember.name,
             color: newMember.color,
             role: (res.role || 'MEMBER') as MemberRole,
           };
-          this.saveSession(session);
+          this.saveSession(session, effectiveHhName);
         }
 
-        if (res.householdId) {
-          this.currentState.householdId = res.householdId;
-        }
         if (res.householdName) {
           this.currentState.householdName = res.householdName;
         }
@@ -476,11 +726,15 @@ class StorageSyncService {
         }
         if (!this.currentState.members.some((m) => m.id === newMember.id)) {
           this.currentState.members = [...this.currentState.members, newMember];
+        } else {
+          this.currentState.members = this.currentState.members.map((m) =>
+            m.id === newMember.id ? { ...m, ...newMember } : m
+          );
         }
 
         this.saveToStorage(this.currentState);
         this.notifySubscribers({ type: 'MEMBER_JOIN_REQUESTED', payload: { member: newMember } });
-        return { success: true, member: newMember, status: res.status };
+        return { success: true, member: newMember, status: res.status, isReturningMember: Boolean(res.isReturningMember) };
       } catch (err: any) {
         return { success: false, error: err.message || 'Failed to join household.' };
       }
@@ -493,6 +747,29 @@ class StorageSyncService {
 
     if (!isOtpValid) {
       return { success: false, error: 'Invalid or expired 6-digit passkey. Please check the TV screen.' };
+    }
+
+    const normalizedName = displayName.trim().toLowerCase();
+    const existingMember = this.currentState.members.find(
+      (m) => m.name.trim().toLowerCase() === normalizedName
+    );
+
+    if (existingMember) {
+      existingMember.color = color;
+      existingMember.status = 'APPROVED';
+      const session: MemberSession = {
+        householdId: this.currentState.householdId,
+        householdName: this.currentState.householdName,
+        memberId: existingMember.id,
+        memberToken: `tok_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+        displayName: existingMember.name,
+        color: existingMember.color,
+        role: existingMember.role,
+      };
+      this.saveSession(session, this.currentState.householdName);
+      this.saveToStorage(this.currentState);
+      this.broadcast({ type: 'PRESENCE_UPDATED', payload: { memberId: existingMember.id, isSameWifi: true } });
+      return { success: true, member: existingMember, status: existingMember.status, isReturningMember: true };
     }
 
     const hasHost = this.currentState.members.some((m) => m.role === 'HOST');
@@ -527,17 +804,18 @@ class StorageSyncService {
     if (newMember.status === 'APPROVED') {
       const session: MemberSession = {
         householdId: this.currentState.householdId,
+        householdName: this.currentState.householdName,
         memberId: newMember.id,
         memberToken: `tok_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
         displayName: newMember.name,
         color: newMember.color,
         role: newMember.role,
       };
-      this.saveSession(session);
+      this.saveSession(session, this.currentState.householdName);
     }
 
     this.broadcast({ type: 'MEMBER_JOIN_REQUESTED', payload: { member: newMember } });
-    return { success: true, member: newMember, status: newMember.status };
+    return { success: true, member: newMember, status: newMember.status, isReturningMember: false };
   }
 
   public approveMember(memberId: string): void {

@@ -17,8 +17,9 @@ import {
 import { parseWithBedrock } from '../services/bedrock.js';
 import { createPresignedPhotoUploadUrl } from '../services/s3.js';
 import { broadcastToHousehold } from '../services/websocketNotifier.js';
-import { handler as alexaHandler } from './alexa.js';
+import { handler as alexaHandler, processVoiceTextWithAlexaNLP } from './alexa.js';
 import type { HouseholdMember, PinNote } from '../types.js';
+import crypto from 'crypto';
 
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/di1gpgdox7pk1\.cloudfront\.net$/,
@@ -158,13 +159,55 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         return jsonResponse(400, { error: 'Invalid or expired 6-digit passkey. Please check the TV screen.' });
       }
 
+      const isSameWifi = Boolean(state.hostPublicIp && clientIp && state.hostPublicIp === clientIp);
+      const normalizedName = displayName.trim().toLowerCase();
+      const userHash = crypto.createHash('sha256').update(normalizedName).digest('hex').substring(0, 10);
+
+      // Check if this member already exists in this household (by name or usernameHash)
+      const existingMember = state.members.find(
+        (m) => m.name.trim().toLowerCase() === normalizedName || (m as any).usernameHash === userHash
+      );
+
+      const memberToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
+      let finalMember: HouseholdMember;
+
+      if (existingMember) {
+        // Returning user logging back in with the same username
+        finalMember = {
+          ...existingMember,
+          color: color || existingMember.color,
+          status: 'APPROVED', // Verified with active TV passkey
+          lastSeenIp: clientIp,
+          isSameWifi,
+          usernameHash: userHash,
+          memberToken,
+        };
+
+        await putMember(finalMember);
+
+        await broadcastToHousehold(householdId, {
+          type: 'PRESENCE_UPDATED',
+          payload: { memberId: finalMember.id, isSameWifi },
+        });
+
+        return jsonResponse(200, {
+          status: finalMember.status,
+          householdId,
+          householdName: state.householdName,
+          memberId: finalMember.id,
+          memberToken,
+          role: finalMember.role,
+          isSameWifi,
+          isReturningMember: true,
+        });
+      }
+
+      // Brand new member
       const hasHost = state.members.some((m) => m.role === 'HOST');
       const isFirstMember = state.members.length === 0 || !hasHost;
-      const isSameWifi = Boolean(state.hostPublicIp && clientIp && state.hostPublicIp === clientIp);
       const memberId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const memberToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
 
-      const newMember: HouseholdMember = {
+      finalMember = {
         id: memberId,
         householdId,
         name: displayName,
@@ -174,9 +217,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         lastSeenIp: clientIp,
         isSameWifi,
         joinedAt: new Date().toISOString(),
+        usernameHash: userHash,
+        memberToken,
       };
 
-      await putMember(newMember);
+      await putMember(finalMember);
 
       if (isFirstMember) {
         await setHouseholdConfigured(householdId, true);
@@ -184,17 +229,18 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
       await broadcastToHousehold(householdId, {
         type: 'MEMBER_JOIN_REQUESTED',
-        payload: { member: newMember },
+        payload: { member: finalMember },
       });
 
       return jsonResponse(200, {
-        status: newMember.status,
+        status: finalMember.status,
         householdId,
         householdName: state.householdName,
-        memberId,
+        memberId: finalMember.id,
         memberToken,
-        role: newMember.role,
+        role: finalMember.role,
         isSameWifi,
+        isReturningMember: false,
       });
     }
 
@@ -369,6 +415,17 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
       const parsed = await parseWithBedrock(input);
       return jsonResponse(200, parsed);
+    }
+
+    if (rawPath === '/voice/process' && method === 'POST') {
+      const text = body.text || body.input || body.transcript;
+      const householdId = body.householdId || event.headers?.['x-household-id'] || event.headers?.['X-Household-Id'];
+      if (!text || !householdId) {
+        return jsonResponse(400, { error: 'Missing text or householdId' });
+      }
+
+      const result = await processVoiceTextWithAlexaNLP(text, householdId);
+      return jsonResponse(200, result);
     }
 
     // -------------------------------------------------------------------------

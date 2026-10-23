@@ -1,0 +1,49 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Rich warm cork background -->
+    <path
+        android:fillColor="#78350F"
+        android:pathData="M0,0h320v180h-320z" />
+    <path
+        android:fillColor="#92400E"
+        android:pathData="M6,6h308v168h-308z" />
+    <path
+        android:fillColor="#B45309"
+        android:pathData="M12,12h296v156h-296z" />
+    <!-- Sticky Note Graphic on the left -->
+    <path
+        android:fillColor="#FEF08A"
+        android:pathData="M35,30h80l16,16v84h-96z" />
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M115,30l16,16h-16z" />
+    <!-- Red push pin -->
+    <path
+        android:fillColor="#DC2626"
+        android:pathData="M83,22a8,8 0 1,0 0.001,0z" />
+    <path
+        android:fillColor="#EF4444"
+        android:pathData="M81,20a4,4 0 1,0 0.001,0z" />
+    <!-- Note content lines -->
+    <path
+        android:fillColor="#CA8A04"
+        android:pathData="M48,60h54v5h-54z M48,74h64v5h-64z M48,88h42v5h-42z M48,102h58v5h-58z" />
+    <!-- PinBoard TV Brand Slate Card on the right -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M165,30h120v100h-120z" />
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M170,35h110v90h-110z" />
+    <!-- Slate Card accent lines -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M185,55h80v6h-80z M185,73h60v5h-60z M185,89h70v5h-70z M185,105h50v5h-50z" />
+    <!-- Brass pin on slate -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M225,24a7,7 0 1,0 0.001,0z" />
+</vector>

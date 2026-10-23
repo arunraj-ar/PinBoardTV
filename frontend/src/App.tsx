@@ -41,10 +41,34 @@ export function App() {
 
   // Subscribe to storageSync for live state updates across tabs/windows
   useEffect(() => {
-    const unsubscribe = storageSync.subscribe((newState) => {
+    const unsubscribe = storageSync.subscribe((newState, event) => {
       setHouseholdState(newState);
+      if (event && (event.type === 'WAKE_BOARD' || event.type === 'NOTE_CREATED')) {
+        setRoute((prev) => {
+          if (prev === 'tv_screensaver') {
+            window.history.pushState({}, '', '/tv');
+            return 'tv_board';
+          }
+          return prev;
+        });
+      }
     });
     return () => unsubscribe();
+  }, []);
+
+  // Listen for direct native wake triggers (e.g. Deep Link or Alexa)
+  useEffect(() => {
+    const handleWake = () => {
+      setRoute((prev) => {
+        if (prev === 'tv_screensaver') {
+          window.history.pushState({}, '', '/tv');
+          return 'tv_board';
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('pinboard:wake', handleWake);
+    return () => window.removeEventListener('pinboard:wake', handleWake);
   }, []);
 
   // Initialize route based on URL path and device type
@@ -53,9 +77,35 @@ export function App() {
       const path = window.location.pathname;
       const rawHash = window.location.hash.split('?')[0].replace(/^#\/?/, '/');
       const activePath = (rawHash && rawHash !== '/') ? rawHash : path;
-      const currentSession = storageSync.getSession();
-      setSession(currentSession);
 
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+      const hashParams = new URLSearchParams(hashQuery);
+      const targetHh = searchParams.get('hh') || searchParams.get('householdId') || hashParams.get('hh') || hashParams.get('householdId');
+
+      let currentSession = storageSync.getSession();
+
+      if (targetHh) {
+        // A specific household was targeted via QR code or link
+        const targetSession = storageSync.getSessionForHousehold(targetHh);
+        if (targetSession) {
+          // User has already joined this target household on this phone!
+          storageSync.switchHousehold(targetHh);
+          currentSession = targetSession;
+          setSession(targetSession);
+          setRoute('mobile_app');
+          window.history.replaceState({}, '', '/mobile');
+          return;
+        } else {
+          // New household (or logged out of this household) -> Show MobileJoin for target household
+          storageSync.prepareTargetHousehold(targetHh);
+          setSession(null);
+          setRoute('mobile_join');
+          return;
+        }
+      }
+
+      setSession(currentSession);
       const isMobile = isMobileDevice();
 
       if (activePath === '/') {

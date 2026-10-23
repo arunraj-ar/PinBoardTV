@@ -3,6 +3,7 @@ package com.pinboardtv.app;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.service.dreams.DreamService;
+import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -43,8 +44,45 @@ public class PinBoardDreamService extends DreamService {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
+        settings.setTextZoom(100);
+
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        final int screenW = metrics.widthPixels;
+        final int screenH = metrics.heightPixels;
+        float density = metrics.density;
+
+        int targetScale = (int) (94.0f / Math.max(1.0f, density));
+        mWebView.setInitialScale(targetScale);
+
+        mWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
         mWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                try {
+                    String script = "(function() {" +
+                        "  var meta = document.querySelector('meta[name=\"viewport\"]');" +
+                        "  if (!meta) {" +
+                        "    meta = document.createElement('meta');" +
+                        "    meta.name = 'viewport';" +
+                        "    document.head.appendChild(meta);" +
+                        "  }" +
+                        "  var sw = window.innerWidth || " + screenW + ";" +
+                        "  var sh = window.innerHeight || " + screenH + ";" +
+                        "  var targetW = 1920;" +
+                        "  var targetH = 1080;" +
+                        "  var scale = Math.min(sw / targetW, sh / targetH);" +
+                        "  if (scale > 0 && scale < 0.98) {" +
+                        "    meta.setAttribute('content', 'width=' + targetW + ', initial-scale=' + scale + ', maximum-scale=' + scale + ', user-scalable=no');" +
+                        "  }" +
+                        "  document.documentElement.style.overflow = 'hidden';" +
+                        "  document.body.style.overflow = 'hidden';" +
+                        "})();";
+                    view.evaluateJavascript(script, null);
+                } catch (Exception ignored) {}
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 // If user clicks / navigates to main app (/tv), launch MainActivity

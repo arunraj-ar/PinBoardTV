@@ -18,6 +18,7 @@ import {
   Home,
   Edit3,
   Trash2,
+  LogOut,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
@@ -34,6 +35,7 @@ import { parseConversationalVoice } from '../services/voiceNlpParser';
 import { NoteCard } from '../components/NoteCard';
 import { organizeNotesIntoPages } from '../services/aiNoteOrganizer';
 import { HouseholdNameModal } from '../components/HouseholdNameModal';
+import { awsCloudDriver } from '../services/awsCloudDriver';
 
 export interface TvBoardAppProps {
   onBackToScreensaver?: () => void;
@@ -56,6 +58,8 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
   const [confirmDialogFocusIndex, setConfirmDialogFocusIndex] = useState<number>(0); // 0: Cancel, 1: Confirm Remove
   const [noteToDelete, setNoteToDelete] = useState<PinNote | null>(null);
   const [deleteConfirmFocusIndex, setDeleteConfirmFocusIndex] = useState<number>(0); // 0: Cancel, 1: Confirm Delete
+  const [showExitDialog, setShowExitDialog] = useState<boolean>(false);
+  const [exitDialogFocusIndex, setExitDialogFocusIndex] = useState<number>(0); // 0: Cancel, 1: Exit App
   const [isListening, setIsListening] = useState<boolean>(false);
   const [voiceTranscript, setVoiceTranscript] = useState<string>('');
   const [voiceStatusText, setVoiceStatusText] = useState<string>('');
@@ -110,7 +114,15 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
   // 9 to 15 items per page: 5 cols x 3 rows (compact 10-foot legible)
   // 15+ items: Horizontal sliding multi-page carousel with seamless D-pad boundaries
   const uniqueNotes = Array.from(new Map(state.notes.map((n) => [n.id, n])).values());
-  const pages = organizeNotesIntoPages(uniqueNotes, 15);
+  const pages = state.autonomousAiOrganize !== false
+    ? organizeNotesIntoPages(uniqueNotes, 15)
+    : (() => {
+        const chunks: PinNote[][] = [];
+        for (let i = 0; i < uniqueNotes.length; i += 15) {
+          chunks.push(uniqueNotes.slice(i, i + 15));
+        }
+        return chunks.length > 0 ? chunks : [[]];
+      })();
   const totalPages = Math.max(1, pages.length);
   const cols = totalPages > 1 || uniqueNotes.length > 8 ? 5 : 4;
   const isCompact = cols === 5;
@@ -199,7 +211,36 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
         return;
       }
 
-      // 0a. Note Deletion Confirmation Dialog D-Pad Navigation
+      // 0a. Exit App Confirmation Dialog D-Pad Navigation
+      if (showExitDialog) {
+        if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === 27 || e.keyCode === 4) {
+          e.preventDefault();
+          playPinPopSound();
+          setShowExitDialog(false);
+          return;
+        }
+
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          playDpadNavSound();
+          setExitDialogFocusIndex(0);
+        } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          playDpadNavSound();
+          setExitDialogFocusIndex(1);
+        } else if (e.key === 'Enter' || e.key === 'Select' || e.keyCode === 13) {
+          e.preventDefault();
+          playPinPopSound();
+          if (exitDialogFocusIndex === 0) {
+            setShowExitDialog(false);
+          } else {
+            voiceService.exitApp();
+          }
+        }
+        return;
+      }
+
+      // 0b. Note Deletion Confirmation Dialog D-Pad Navigation
       if (noteToDelete) {
         if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === 27 || e.keyCode === 4) {
           e.preventDefault();
@@ -232,7 +273,7 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
         return;
       }
 
-      // 0b. Member Removal Confirmation Dialog D-Pad Navigation
+      // 0c. Member Removal Confirmation Dialog D-Pad Navigation
       if (memberToConfirmRemove) {
         if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === 27 || e.keyCode === 4) {
           e.preventDefault();
@@ -427,6 +468,15 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
         return;
       }
 
+      // Back button on root board prompts Exit confirmation
+      if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === 27 || e.keyCode === 4) {
+        e.preventDefault();
+        playPinPopSound();
+        setShowExitDialog(true);
+        setExitDialogFocusIndex(0);
+        return;
+      }
+
       // 4. Board & Header Navigation
       if (e.key === 's' || e.key === 'S') {
         e.preventDefault();
@@ -453,9 +503,11 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
           e.preventDefault();
           playDpadNavSound();
           setFocusArea('board');
-          // Spatial drop from header into board: Voice Pin drops into mid-left column, Settings drops into right column
+          // Spatial drop from header into board: Voice Pin (0) drops left, Settings (1) drops right
           if (currentNotes.length > 0) {
-            const targetCol = headerFocusIndex === 0 ? Math.min(cols > 4 ? 3 : 2, currentNotes.length - 1) : Math.min(cols - 1, currentNotes.length - 1);
+            const targetCol = headerFocusIndex === 0
+              ? Math.min(cols > 4 ? 3 : 2, currentNotes.length - 1)
+              : Math.min(cols - 1, currentNotes.length - 1);
             setFocusedIndex(targetCol);
           }
         } else if (e.key === 'Enter' || e.key === 'Select' || e.keyCode === 13) {
@@ -583,6 +635,8 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
     confirmDialogFocusIndex,
     noteToDelete,
     deleteConfirmFocusIndex,
+    showExitDialog,
+    exitDialogFocusIndex,
   ]);
 
   // Universal Auto-scroll for TV D-Pad navigation: works everywhere (modal checklist, settings list, etc.)
@@ -694,12 +748,34 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
       }
     };
 
+    const handleVoiceResult = async (spokenText: string) => {
+      setIsListening(false);
+      setVoiceTranscript(spokenText);
+
+      // 1. Alexa High-Precision NLP Engine
+      try {
+        const alexaResult = await awsCloudDriver.processVoiceWithAlexaNLP(state.householdId, spokenText);
+        if (alexaResult && alexaResult.success) {
+          setVoiceStatusText(`Alexa: ${alexaResult.summary}`);
+          playJoinSuccessSound();
+          confetti({ particleCount: 50, spread: 70, origin: { y: 0.5 } });
+          if (alexaResult.action === 'SET_HOUSEHOLD_NAME' && alexaResult.payload?.name) {
+            storageSync.setHouseholdName(alexaResult.payload.name);
+          }
+          return;
+        }
+      } catch (alexaErr) {
+        console.warn('Alexa NLP cloud route unavailable, falling back to local engine:', alexaErr);
+      }
+
+      // 2. Local Fallback Voice NLP
+      const parsed = parseConversationalVoice(spokenText, targetNote, availableNames, state.notes);
+      executeParsedVoiceAction(parsed, targetNote);
+    };
+
     const success = voiceService.startListening(
       (transcript) => {
-        setIsListening(false);
-        setVoiceTranscript(transcript);
-        const parsed = parseConversationalVoice(transcript, targetNote, availableNames, state.notes);
-        executeParsedVoiceAction(parsed, targetNote);
+        handleVoiceResult(transcript);
       },
       (error) => {
         setIsListening(false);
@@ -718,9 +794,7 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
           : '[Voice Remote Simulation] Speak your command:\n(e.g., "Add oat milk to groceries", "Rename household to The Cozy Cottage", "Remind Alex to take out trash")'
       );
       if (simulated) {
-        setVoiceTranscript(simulated);
-        const parsed = parseConversationalVoice(simulated, targetNote, availableNames, state.notes);
-        executeParsedVoiceAction(parsed, targetNote);
+        handleVoiceResult(simulated);
       }
     }
   };
@@ -730,7 +804,7 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
 
   return (
     <div
-      className={`relative w-screen h-screen overflow-hidden select-none animate-pixel-shift flex flex-col justify-between ${
+      className={`relative w-screen h-screen overflow-hidden select-none flex flex-col justify-between ${
         state.theme === 'slate' ? 'slateboard-canvas' : 'corkboard-canvas'
       } vignette-overlay`}
     >
@@ -764,7 +838,7 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
           </button>
         </div>
 
-        {/* Right Controls: Voice Pin & Settings */}
+        {/* Right Controls: Voice Pin, Settings & Exit App */}
         <div className="flex items-center space-x-3">
           {/* Voice Pin Button */}
           <button
@@ -1642,6 +1716,62 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
                 }`}
               >
                 Delete Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 10-FOOT CONFIRMATION MODAL: Exit PinBoard TV */}
+      {showExitDialog && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200"
+          onClick={() => setShowExitDialog(false)}
+        >
+          <div
+            className="bg-stone-900 border-4 border-amber-400/80 rounded-3xl p-10 max-w-xl w-full text-center shadow-[0_0_80px_rgba(251,191,36,0.3)] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-400/20 border-2 border-amber-400 flex items-center justify-center text-amber-300">
+              <LogOut className="w-10 h-10" />
+            </div>
+
+            <h3 className="text-3xl font-black text-white mb-3">
+              Exit PinBoard TV?
+            </h3>
+
+            <p className="text-lg text-stone-300 mb-8 leading-relaxed">
+              Are you sure you want to exit PinBoard TV and return to your Fire TV Home Screen?
+            </p>
+
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => {
+                  playPinPopSound();
+                  setShowExitDialog(false);
+                }}
+                data-focused={exitDialogFocusIndex === 0}
+                className={`flex-1 py-4 px-6 rounded-2xl font-bold text-xl transition-all cursor-pointer border-2 ${
+                  exitDialogFocusIndex === 0
+                    ? 'ring-4 ring-amber-400 bg-amber-400 text-stone-950 font-black border-amber-300 shadow-xl'
+                    : 'bg-stone-800 text-stone-300 border-white/10 hover:bg-stone-700'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  playPinPopSound();
+                  voiceService.exitApp();
+                }}
+                data-focused={exitDialogFocusIndex === 1}
+                className={`flex-1 py-4 px-6 rounded-2xl font-bold text-xl transition-all cursor-pointer border-2 ${
+                  exitDialogFocusIndex === 1
+                    ? 'ring-4 ring-rose-500 bg-rose-600 text-white font-black border-rose-400 shadow-xl'
+                    : 'bg-rose-950/40 text-rose-300 border-rose-500/30 hover:bg-rose-900/60'
+                }`}
+              >
+                Exit App
               </button>
             </div>
           </div>

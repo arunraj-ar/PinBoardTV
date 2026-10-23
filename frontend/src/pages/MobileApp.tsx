@@ -32,6 +32,7 @@ import type {
 } from '../types/pinboard';
 import { playPinPopSound, playCheckmarkSound } from '../services/soundEffects';
 import { PinGraphic } from '../components/PinGraphic';
+import { sortNotesByAiScore } from '../services/aiNoteOrganizer';
 
 interface MobileAppProps {
   onLogout: () => void;
@@ -435,7 +436,10 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
     setIsEditDirty(true);
   };
 
-  const uniqueNotes = Array.from(new Map(state.notes.map((n) => [n.id, n])).values());
+  const rawUniqueNotes = Array.from(new Map(state.notes.map((n) => [n.id, n])).values());
+  const uniqueNotes = state.autonomousAiOrganize !== false
+    ? sortNotesByAiScore(rawUniqueNotes)
+    : rawUniqueNotes;
   const groceryNotes = uniqueNotes.filter((n) => n.type === 'GROCERY');
 
   const isUserAdmin =

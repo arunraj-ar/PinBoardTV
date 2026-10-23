@@ -120,6 +120,8 @@ export async function getHousehold(householdId: string): Promise<HouseholdState 
       color: item.color,
       role: item.role,
       status: item.status,
+      usernameHash: item.usernameHash,
+      memberToken: item.memberToken,
       lastSeenIp: item.lastSeenIp,
       isSameWifi: Boolean(item.isSameWifi),
       joinedAt: item.joinedAt,

@@ -233,10 +233,17 @@ export const TvInitialSetup: React.FC<TvInitialSetupProps> = ({ onSetupComplete 
             </div>
           </div>
 
-          {/* Passkey Display */}
+          {/* Passkey Display & Alexa Pairing Prompt */}
           <div className="mt-5 text-center">
             <div className="text-5xl font-mono font-black text-amber-400 tracking-widest drop-shadow-md">
               {state.currentOtp.slice(0, 3)} - {state.currentOtp.slice(3)}
+            </div>
+            <div className="mt-3 flex items-center justify-center gap-2 text-stone-300 text-sm">
+              <span className="text-lg">🎙️</span>
+              <span>Hold remote mic:</span>
+              <span className="text-amber-300 font-bold bg-amber-400/10 px-2.5 py-1 rounded-lg border border-amber-400/25">
+                "Alexa, tell PinBoard my code is {state.currentOtp.slice(0, 3)} {state.currentOtp.slice(3)}"
+              </span>
             </div>
           </div>
         </div>

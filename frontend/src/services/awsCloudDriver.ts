@@ -165,6 +165,22 @@ export class AwsCloudDriver {
     return res.json();
   }
 
+  public async processVoiceWithAlexaNLP(
+    householdId: string,
+    text: string
+  ): Promise<{ success: boolean; action: string; summary: string; payload?: any }> {
+    const res = await fetch(`${this.apiUrl}/voice/process`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Household-Id': householdId,
+      },
+      body: JSON.stringify({ householdId, text }),
+    });
+    if (!res.ok) throw new Error(`Voice process failed: ${res.statusText}`);
+    return res.json();
+  }
+
   // ---------------------------------------------------------------------------
   // WebSocket Real-Time Connection
   // ---------------------------------------------------------------------------

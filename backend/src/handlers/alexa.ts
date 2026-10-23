@@ -5,6 +5,7 @@ import {
   getHousehold,
   putNote,
   updateNotePartial,
+  updateHouseholdName,
 } from '../services/dynamo.js';
 import { broadcastToHousehold } from '../services/websocketNotifier.js';
 import type { PinNote } from '../types.js';
@@ -16,6 +17,16 @@ interface AlexaRequestEnvelope {
     sessionId: string;
     application: { applicationId: string };
     user: { userId: string };
+  };
+  context?: {
+    System?: {
+      device?: {
+        supportedInterfaces?: Record<string, any>;
+      };
+      user?: {
+        userId?: string;
+      };
+    };
   };
   request: {
     type: string;
@@ -56,11 +67,82 @@ interface AlexaResponseEnvelope {
         text: string;
       };
     };
+    directives?: any[];
     shouldEndSession: boolean;
   };
 }
 
-function buildSpeechResponse(speechText: string, shouldEndSession: boolean = true, repromptText?: string): AlexaResponseEnvelope {
+function supportsAPL(event: AlexaRequestEnvelope): boolean {
+  return Boolean(
+    event.context?.System?.device?.supportedInterfaces?.['Alexa.Presentation.APL']
+  );
+}
+
+function buildLaunchAppDirectives(): any[] {
+  const appUrl = 'https://di1gpgdox7pk1.cloudfront.net';
+  return [
+    {
+      type: 'Alexa.Presentation.APL.RenderDocument',
+      token: 'pinboardLaunchDocument',
+      document: {
+        type: 'APL',
+        version: '1.4',
+        onMount: [
+          {
+            type: 'OpenURL',
+            source: appUrl,
+            onFail: [
+              {
+                type: 'SetValue',
+                componentId: 'launchStatusMessage',
+                property: 'text',
+                value: 'Unable to open app. Please ensure the latest PinBoard TV APK is installed on this Fire TV.',
+              },
+            ],
+          },
+        ],
+        mainTemplate: {
+          parameters: ['payload'],
+          items: [
+            {
+              type: 'Container',
+              width: '100vw',
+              height: '100vh',
+              alignItems: 'center',
+              justifyContent: 'center',
+              items: [
+                {
+                  id: 'launchStatusMessage',
+                  type: 'Text',
+                  text: 'Opening PinBoard TV...',
+                  fontSize: '36dp',
+                  color: '#ffffff',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: 'Alexa.Presentation.APL.ExecuteCommands',
+      token: 'pinboardLaunchDocument',
+      commands: [
+        {
+          type: 'OpenURL',
+          source: appUrl,
+        },
+      ],
+    },
+  ];
+}
+
+function buildSpeechResponse(
+  speechText: string,
+  shouldEndSession: boolean = true,
+  repromptText?: string,
+  directives?: any[]
+): AlexaResponseEnvelope {
   return {
     version: '1.0',
     response: {
@@ -83,9 +165,18 @@ function buildSpeechResponse(speechText: string, shouldEndSession: boolean = tru
             },
           }
         : {}),
+      ...(directives && directives.length > 0 ? { directives } : {}),
       shouldEndSession,
     },
   };
+}
+
+function cleanGroceryItemText(input: string): string {
+  let cleaned = input.trim();
+  cleaned = cleaned.replace(/^(?:please\s+)?(?:add|buy|get|we\s+need|need|put|pick\s+up|pin)\s+/i, '');
+  cleaned = cleaned.replace(/\s+(?:to|on|in|into|for)\s+(?:the\s+|my\s+|our\s+)?(?:grocery\s+list|groceries\s+list|groceries|grocery|shopping\s+list|store\s+list|board|pinboard)\s*$/i, '');
+  cleaned = cleaned.replace(/\s+(?:from|at)\s+(?:the\s+)?(?:store|supermarket|market)\s*$/i, '');
+  return cleaned.trim();
 }
 
 export async function handler(event: AlexaRequestEnvelope): Promise<AlexaResponseEnvelope> {
@@ -102,10 +193,21 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
           'What is the 6-digit code shown on your TV screen?'
         );
       }
+
+      // 1. Wake up TV screen and transition to active interactive board via WebSocket
+      await broadcastToHousehold(householdId, {
+        type: 'WAKE_BOARD',
+        payload: { action: 'OPEN_APP' },
+      });
+
+      // 2. If device is Fire TV with APL support, fire deep-link OpenURL directive to launch APK
+      const aplDirectives = supportsAPL(event) ? buildLaunchAppDirectives() : undefined;
+
       return buildSpeechResponse(
-        'Welcome back to PinBoard TV! You can say: add milk to groceries, or ask: what is on my grocery list?',
-        false,
-        'What would you like to pin or check on the board?'
+        'Opening PinBoard TV on your screen!',
+        true,
+        undefined,
+        aplDirectives
       );
     }
 
@@ -127,7 +229,16 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
 
       // 1. LinkHouseholdIntent
       if (intentName === 'LinkHouseholdIntent') {
-        const pinCode = slots.sixDigitPin?.value?.replace(/\s+/g, '') || '';
+        const rawPin = slots.sixDigitPin?.value || slots.pin?.value || slots.code?.value || '';
+        const wordMap: Record<string, string> = {
+          zero: '0', oh: '0', one: '1', two: '2', three: '3', four: '4',
+          five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+        };
+        let cleaned = rawPin.toLowerCase();
+        for (const [w, d] of Object.entries(wordMap)) {
+          cleaned = cleaned.replace(new RegExp(`\\b${w}\\b`, 'g'), d);
+        }
+        const pinCode = cleaned.replace(/[^0-9]/g, '');
         if (!pinCode || pinCode.length < 5) {
           return buildSpeechResponse('Please tell me the 6-digit code shown on your TV screen.', false);
         }
@@ -161,14 +272,6 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
       if (!state) {
         return buildSpeechResponse('I could not find your household data. Please re-link with your TV code.');
       }
-
-function cleanGroceryItemText(input: string): string {
-  let cleaned = input.trim();
-  cleaned = cleaned.replace(/^(?:please\s+)?(?:add|buy|get|we\s+need|need|put|pick\s+up|pin)\s+/i, '');
-  cleaned = cleaned.replace(/\s+(?:to|on|in|into|for)\s+(?:the\s+|my\s+|our\s+)?(?:grocery\s+list|groceries\s+list|groceries|grocery|shopping\s+list|store\s+list|board|pinboard)\s*$/i, '');
-  cleaned = cleaned.replace(/\s+(?:from|at)\s+(?:the\s+)?(?:store|supermarket|market)\s*$/i, '');
-  return cleaned.trim();
-}
 
       // 2. AddGroceryIntent
       if (intentName === 'AddGroceryIntent') {
@@ -224,7 +327,20 @@ function cleanGroceryItemText(input: string): string {
           });
         }
 
-        return buildSpeechResponse(`Added ${itemNames.join(', ')} to your grocery list on the TV.`);
+        // Wake up TV screen to show newly updated groceries list!
+        await broadcastToHousehold(householdId, {
+          type: 'WAKE_BOARD',
+          payload: { action: 'OPEN_APP', target: 'GROCERY' },
+        });
+
+        const aplDirectives = supportsAPL(event) ? buildLaunchAppDirectives() : undefined;
+
+        return buildSpeechResponse(
+          `Added ${itemNames.join(', ')} to your grocery list on the TV.`,
+          true,
+          undefined,
+          aplDirectives
+        );
       }
 
       // 3. AddNoteIntent
@@ -279,9 +395,23 @@ function cleanGroceryItemText(input: string): string {
               });
             }
 
-            return buildSpeechResponse(`Added ${itemNames.join(', ')} to your grocery list on the TV.`);
+            await broadcastToHousehold(householdId, {
+              type: 'WAKE_BOARD',
+              payload: { action: 'OPEN_APP', target: 'GROCERY' },
+            });
+
+            const aplDirectives = supportsAPL(event) ? buildLaunchAppDirectives() : undefined;
+
+            return buildSpeechResponse(
+              `Added ${itemNames.join(', ')} to your grocery list on the TV.`,
+              true,
+              undefined,
+              aplDirectives
+            );
           }
         }
+
+        const aplDirectives = supportsAPL(event) ? buildLaunchAppDirectives() : undefined;
 
         if (memberName) {
           // Assign as chore
@@ -308,9 +438,16 @@ function cleanGroceryItemText(input: string): string {
             type: 'NOTE_CREATED',
             payload: choreNote,
           });
+          await broadcastToHousehold(householdId, {
+            type: 'WAKE_BOARD',
+            payload: { action: 'OPEN_APP', target: 'CHORE' },
+          });
 
           return buildSpeechResponse(
-            `Pinned a chore on the TV for ${memberName}: ${rawTaskText}.`
+            `Pinned a chore on the TV for ${memberName}: ${rawTaskText}.`,
+            true,
+            undefined,
+            aplDirectives
           );
         } else {
           // General sticky note
@@ -332,12 +469,42 @@ function cleanGroceryItemText(input: string): string {
             type: 'NOTE_CREATED',
             payload: stickyNote,
           });
+          await broadcastToHousehold(householdId, {
+            type: 'WAKE_BOARD',
+            payload: { action: 'OPEN_APP', target: 'STICKY' },
+          });
 
-          return buildSpeechResponse(`Pinned a note to the board: ${rawTaskText}.`);
+          return buildSpeechResponse(
+            `Pinned a note to the board: ${rawTaskText}.`,
+            true,
+            undefined,
+            aplDirectives
+          );
         }
       }
 
-      // 4. ReadGroceryListIntent
+      // 4. SetHouseholdNameIntent / RenameHouseholdIntent
+      if (intentName === 'SetHouseholdNameIntent' || intentName === 'RenameHouseholdIntent') {
+        const rawName = slots.name?.value?.trim() || slots.householdName?.value?.trim() || '';
+        const cleanedName = rawName
+          .replace(/^(?:the\s+)?(?:household\s+|board\s+|pinboard\s+)?(?:name\s+)?(?:to\s+|as\s+)/i, '')
+          .replace(/^["']|["']$/g, '')
+          .trim();
+
+        if (!cleanedName) {
+          return buildSpeechResponse('What would you like to set your household name to?', false);
+        }
+
+        await updateHouseholdName(householdId, cleanedName);
+        await broadcastToHousehold(householdId, {
+          type: 'HOUSEHOLD_NAME_UPDATED',
+          payload: { name: cleanedName },
+        });
+
+        return buildSpeechResponse(`Updated household name to ${cleanedName} on your TV.`);
+      }
+
+      // 5. ReadGroceryListIntent
       if (intentName === 'ReadGroceryListIntent') {
         const groceryNote = state.notes.find((n) => n.type === 'GROCERY');
         const openItems = (groceryNote?.items || []).filter((i) => !i.done).map((i) => i.text);
@@ -377,4 +544,166 @@ function cleanGroceryItemText(input: string): string {
     console.error('Alexa handler error:', error);
     return buildSpeechResponse('Sorry, an error occurred while updating PinBoard TV.');
   }
+}
+
+/**
+ * Unified Voice NLP Engine using Alexa's natural language understanding patterns.
+ * Allows remote mic, Fire TV speech intent, and web voice to execute with the exact same intelligence.
+ */
+export async function processVoiceTextWithAlexaNLP(
+  rawText: string,
+  householdId: string
+): Promise<{ success: boolean; action: string; summary: string; payload?: any }> {
+  const text = (rawText || '').trim();
+  if (!text) {
+    return { success: false, action: 'EMPTY', summary: 'No speech detected.' };
+  }
+
+  const state = await getHousehold(householdId);
+  if (!state) {
+    return { success: false, action: 'ERROR', summary: 'Household not found.' };
+  }
+
+  // 1. Rename Household: "rename household to...", "set board name to...", "change name to..."
+  const renameMatch = text.match(/^(?:set|change|rename)(?:\s+(?:the|our))?\s*(?:household|board|pinboard)?\s*(?:name)?\s+(?:to|as)\s+(.+)/i);
+  if (renameMatch) {
+    const newName = renameMatch[1].replace(/^["']|["']$/g, '').trim();
+    if (newName) {
+      await updateHouseholdName(householdId, newName);
+      await broadcastToHousehold(householdId, {
+        type: 'HOUSEHOLD_NAME_UPDATED',
+        payload: { name: newName },
+      });
+      return {
+        success: true,
+        action: 'SET_HOUSEHOLD_NAME',
+        summary: `Updated household name to "${newName}"`,
+        payload: { name: newName },
+      };
+    }
+  }
+
+  // 2. Groceries intent: "add milk and eggs to groceries", "buy apples", "need avocados"
+  const isGrocery = /(?:grocery|groceries|shopping\s+list|supermarket|buy|milk|eggs|bread|produce|apples|bananas|butter|coffee)/i.test(text);
+  if (isGrocery) {
+    const cleaned = cleanGroceryItemText(text);
+    const itemNames = cleaned
+      .split(/(?:,\s*|\s+and\s+)/i)
+      .map((s: string) => cleanGroceryItemText(s))
+      .filter(Boolean);
+
+    if (itemNames.length > 0) {
+      let groceryNote = state.notes.find((n) => n.type === 'GROCERY');
+      const newItems = itemNames.map((itemText: string) => ({
+        id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        text: itemText,
+        done: false,
+        category: 'Produce',
+      }));
+
+      if (groceryNote) {
+        const updatedItems = [...(groceryNote.items || []), ...newItems];
+        await updateNotePartial(householdId, groceryNote.id, { items: updatedItems });
+        await broadcastToHousehold(householdId, {
+          type: 'NOTE_UPDATED',
+          payload: { id: groceryNote.id, changes: { items: updatedItems } },
+        });
+      } else {
+        groceryNote = {
+          id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          householdId,
+          type: 'GROCERY',
+          title: 'Weekly Groceries',
+          items: newItems,
+          color: 'green',
+          magnet: 'brass-pin',
+          rotationDeg: 0,
+          createdByMemberId: 'alexa',
+          pinned: true,
+          updatedAt: new Date().toISOString(),
+        };
+        await putNote(groceryNote);
+        await broadcastToHousehold(householdId, {
+          type: 'NOTE_CREATED',
+          payload: groceryNote,
+        });
+      }
+
+      return {
+        success: true,
+        action: 'ADD_GROCERY',
+        summary: `Added ${itemNames.join(', ')} to groceries`,
+        payload: { items: itemNames },
+      };
+    }
+  }
+
+  // 3. Chore Assignment intent: "assign Alex to take out trash", "chore for Mom clean counter"
+  const choreMatch = text.match(/(?:assign(?:\s+to)?|chore\s+for|task\s+for|note\s+for)\s+([A-Za-z]+)\s+(?:to\s+)?(.+)/i);
+  if (choreMatch) {
+    const targetMemberName = choreMatch[1].trim();
+    const taskText = choreMatch[2].trim();
+
+    const matchedMember = state.members.find(
+      (m) => m.name.toLowerCase() === targetMemberName.toLowerCase()
+    );
+
+    const choreNote: PinNote = {
+      id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      householdId,
+      type: 'CHORE',
+      title: taskText,
+      color: 'blue',
+      magnet: 'blue-star',
+      rotationDeg: -1.0,
+      assignedToMemberId: matchedMember?.id,
+      createdByMemberId: 'alexa',
+      pinned: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await putNote(choreNote);
+    await broadcastToHousehold(householdId, {
+      type: 'NOTE_CREATED',
+      payload: choreNote,
+    });
+
+    return {
+      success: true,
+      action: 'ADD_CHORE',
+      summary: `Assigned chore to ${targetMemberName}: "${taskText}"`,
+      payload: choreNote,
+    };
+  }
+
+  // 4. Default: Sticky Note Reminder
+  const cleanBody = text
+    .replace(/^(?:please\s+)?(?:create\s+note|add\s+note|sticky\s+note|reminder|pin\s+note|pin)\s*:?\s*/i, '')
+    .trim();
+
+  const stickyNote: PinNote = {
+    id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    householdId,
+    type: 'STICKY',
+    title: cleanBody || text,
+    color: 'yellow',
+    magnet: 'brass-pin',
+    rotationDeg: (Math.random() * 2 - 1),
+    createdByMemberId: 'alexa',
+    pinned: true,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await putNote(stickyNote);
+  await broadcastToHousehold(householdId, {
+    type: 'NOTE_CREATED',
+    payload: stickyNote,
+  });
+
+  return {
+    success: true,
+    action: 'ADD_STICKY',
+    summary: `Pinned note: "${stickyNote.title}"`,
+    payload: stickyNote,
+  };
 }

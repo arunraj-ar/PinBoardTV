@@ -12,6 +12,8 @@ export interface HouseholdMember {
   color: NoteColor;
   role: MemberRole;
   status: MemberStatus;
+  usernameHash?: string;
+  memberToken?: string;
   lastSeenIp?: string;
   isSameWifi: boolean;
   joinedAt: string;
@@ -66,4 +68,6 @@ export type SyncEvent =
   | { type: 'MEMBER_APPROVED'; payload: { memberId: string } }
   | { type: 'MEMBER_REMOVED'; payload: { memberId: string } }
   | { type: 'OTP_ROTATED'; payload: { otpCode: string; otpExpiresAt: number } }
-  | { type: 'HOUSEHOLD_NAME_UPDATED'; payload: { name: string } };
+  | { type: 'PRESENCE_UPDATED'; payload: { memberId: string; isSameWifi: boolean } }
+  | { type: 'HOUSEHOLD_NAME_UPDATED'; payload: { name: string } }
+  | { type: 'WAKE_BOARD'; payload?: { action: string } };

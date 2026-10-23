@@ -1,7 +1,7 @@
 <resources>
-    <string name="app_name">PinBoardTV</string>
+    <string name="app_name">PinBoard TV</string>
     <string name="screensaver_name">PinBoardTV Ambient Screensaver</string>
     <!-- Default hosted URL (updated dynamically or falls back to local/hosted endpoint) -->
-    <string name="tv_app_url">https://pinboard-web.s3.ap-southeast-2.amazonaws.com/index.html#/tv</string>
-    <string name="tv_screensaver_url">https://pinboard-web.s3.ap-southeast-2.amazonaws.com/index.html#/tv/screensaver</string>
+    <string name="tv_app_url">https://di1gpgdox7pk1.cloudfront.net/#/tv</string>
+    <string name="tv_screensaver_url">https://di1gpgdox7pk1.cloudfront.net/#/tv/screensaver</string>
 </resources>

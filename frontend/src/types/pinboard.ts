@@ -13,6 +13,8 @@ export interface HouseholdMember {
   avatarHex?: string;
   role: MemberRole;
   status: MemberStatus;
+  usernameHash?: string;
+  memberToken?: string;
   lastSeenIp?: string;
   isSameWifi: boolean; // True when client public IP matches TV Host public IP
   joinedAt: string;
@@ -64,11 +66,29 @@ export interface HouseholdState {
 
 export interface MemberSession {
   householdId: string;
+  householdName?: string;
   memberId: string;
   memberToken: string;
   displayName: string;
   color: NoteColor;
   role?: MemberRole;
+}
+
+export interface SavedHouseholdSession {
+  householdId: string;
+  householdName: string;
+  memberId: string;
+  memberToken: string;
+  displayName: string;
+  color: NoteColor;
+  role: MemberRole;
+  lastVisitedAt: number;
+}
+
+export interface HouseholdRegistry {
+  activeHouseholdId: string | null;
+  lastDisplayName?: string;
+  households: Record<string, SavedHouseholdSession>;
 }
 
 export type SyncEvent =
@@ -81,4 +101,5 @@ export type SyncEvent =
   | { type: 'MEMBER_REMOVED'; payload: { memberId: string } }
   | { type: 'OTP_ROTATED'; payload: { otpCode: string; otpExpiresAt: number } }
   | { type: 'PRESENCE_UPDATED'; payload: { memberId: string; isSameWifi: boolean } }
-  | { type: 'HOUSEHOLD_NAME_UPDATED'; payload: { name: string } };
+  | { type: 'HOUSEHOLD_NAME_UPDATED'; payload: { name: string } }
+  | { type: 'WAKE_BOARD'; payload?: { action: string } };

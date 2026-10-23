@@ -17,7 +17,7 @@ test('HTTP Handler returns 200 for CORS preflight OPTIONS', async () => {
 
   const res = await httpHandler(event);
   assert.strictEqual(res.statusCode, 200);
-  assert.strictEqual(res.headers['Access-Control-Allow-Origin'], '*');
+  assert.strictEqual(res.headers['Access-Control-Allow-Origin'], 'https://di1gpgdox7pk1.cloudfront.net');
 });
 
 test('HTTP Handler returns 404 for unknown route', async () => {
@@ -121,5 +121,26 @@ test('HTTP Handler routes POST /alexa correctly to Alexa Handler', async () => {
   assert.strictEqual(res.statusCode, 200);
   const parsed = JSON.parse(res.body);
   assert.strictEqual(parsed.response.outputSpeech.text, 'Goodbye!');
+});
+
+test('HTTP Handler validates POST /voice/process parameters', async () => {
+  const event = {
+    rawPath: '/voice/process',
+    requestContext: {
+      http: {
+        method: 'POST',
+        path: '/voice/process',
+        sourceIp: '127.0.0.1',
+      },
+    },
+    body: JSON.stringify({
+      text: '',
+    }),
+  };
+
+  const res = await httpHandler(event);
+  assert.strictEqual(res.statusCode, 400);
+  const parsed = JSON.parse(res.body);
+  assert(parsed.error.includes('Missing text or householdId'));
 });
 

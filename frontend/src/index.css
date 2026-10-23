@@ -95,17 +95,46 @@ body {
   box-shadow: 0 0 0 4px #fbbf24, 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 25px rgba(251, 191, 36, 0.45);
 }
 
-/* Burn-in protection: 60s subtle pixel shift animation */
+/* Burn-in protection: Continuous multi-axis orbital drift for TV panels (OLED / LED) */
 @keyframes tvPixelShift {
-  0% { transform: translate(0px, 0px); }
-  25% { transform: translate(2px, -2px); }
-  50% { transform: translate(-2px, 2px); }
-  75% { transform: translate(2px, 2px); }
-  100% { transform: translate(0px, 0px); }
+  0% {
+    transform: translate3d(0px, 0px, 0) scale(1.0);
+  }
+  20% {
+    transform: translate3d(14px, -10px, 0) scale(1.006);
+  }
+  40% {
+    transform: translate3d(-12px, 12px, 0) scale(1.012);
+  }
+  60% {
+    transform: translate3d(16px, 8px, 0) scale(1.008);
+  }
+  80% {
+    transform: translate3d(-10px, -14px, 0) scale(1.014);
+  }
+  100% {
+    transform: translate3d(0px, 0px, 0) scale(1.0);
+  }
 }
 
 .animate-pixel-shift {
-  animation: tvPixelShift 60s ease-in-out infinite;
+  animation: tvPixelShift 50s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  will-change: transform;
+}
+
+/* Subtle micro-breathing for screensaver cards to prevent individual subpixel phosphor fatigue */
+@keyframes screensaverCardFloat {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+.screensaver-card-drift {
+  animation: screensaverCardFloat 9s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* Custom scrollbar for mobile lists */

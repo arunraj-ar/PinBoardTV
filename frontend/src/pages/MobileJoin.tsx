@@ -20,11 +20,12 @@ const COLOR_OPTIONS: { id: NoteColor; label: string; hex: string; bg: string }[]
 export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
   const [householdId, setHouseholdId] = useState<string>(() => storageSync.getState().householdId);
   const [otpCode, setOtpCode] = useState<string>('');
-  const [displayName, setDisplayName] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>(() => storageSync.getLastDisplayName());
   const [selectedColor, setSelectedColor] = useState<NoteColor>('orange');
   const [isMagicQrPrefilled, setIsMagicQrPrefilled] = useState<boolean>(false);
   const [status, setStatus] = useState<'IDLE' | 'SUBMITTING' | 'WAITING_APPROVAL' | 'SUCCESS'>('IDLE');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [welcomeBackName, setWelcomeBackName] = useState<string>('');
 
   const [householdState, setHouseholdState] = useState(storageSync.getState());
   const isFirstAdmin = householdState.members.length === 0 || !householdState.isConfigured;
@@ -78,6 +79,7 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setWelcomeBackName('');
 
     if (!displayName.trim()) {
       setErrorMessage('Please enter your name.');
@@ -106,13 +108,17 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
         return;
       }
 
+      if (result.isReturningMember) {
+        setWelcomeBackName(result.member?.name || displayName.trim());
+      }
+
       if (result.status === 'APPROVED') {
         setStatus('SUCCESS');
         playJoinSuccessSound();
         confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
         setTimeout(() => {
           onJoinSuccess();
-        }, 900);
+        }, 800);
       } else {
         setStatus('WAITING_APPROVAL');
       }
@@ -134,8 +140,13 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
           <Sparkles className="w-8 h-8" />
         </div>
         <h1 className="text-3xl font-black tracking-tight text-white">
-          {isFirstAdmin ? '👑 Set Up Household Admin' : 'Join Household Board'}
+          {isFirstAdmin ? '👑 Set Up Household Admin' : 'Join or Sign In to Board'}
         </h1>
+        <p className="text-stone-400 text-xs mt-1.5 font-medium">
+          {isFirstAdmin
+            ? 'Claim the first host account for this PinBoard TV.'
+            : 'Enter your name to sign in or join as a family member.'}
+        </p>
       </div>
 
       {/* Join Form Card */}
@@ -214,6 +225,13 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
             </div>
           )}
 
+          {welcomeBackName && (
+            <div className="p-3 bg-emerald-950/70 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Welcome back, {welcomeBackName}! Loading household board...</span>
+            </div>
+          )}
+
           {/* Submit Button */}
           <button
             type="submit"
@@ -229,7 +247,7 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
               </span>
             ) : (
               <>
-                <span>{isFirstAdmin ? '👑 Claim Admin & Activate TV' : 'Join Household Board'}</span>
+                <span>{isFirstAdmin ? '👑 Claim Admin & Activate TV' : 'Sign In / Join Board'}</span>
                 <ArrowRight className="w-5 h-5" />
               </>
             )}

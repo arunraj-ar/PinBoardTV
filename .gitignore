@@ -1,8 +1,33 @@
 docs/
+# Environment variables & local secrets
 .env
+.env.*
+*.env.local
+
+# Dependencies & build outputs
 node_modules/
-scratch/
-.playwright-mcp/
 dist/
+frontend/dist/
 backend/dist/
 .aws-sam/
+scratch/
+.playwright-mcp/
+
+# OS metadata
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Android build outputs & local config
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/.cxx/
+*.apk
+*.aar
+*.aab
+*.dex
+*.class

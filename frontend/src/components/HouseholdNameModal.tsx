@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Home, Mic, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Home, Mic, Check, X, Keyboard } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
 import { playPinPopSound, playDpadNavSound, playJoinSuccessSound } from '../services/soundEffects';
 
@@ -39,6 +39,7 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
   const [nameInput, setNameInput] = useState<string>(currentName);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [focusTarget, setFocusTarget] = useState<ModalFocusTarget>('input');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,6 +48,49 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
       setIsListening(false);
     }
   }, [isOpen, currentName]);
+
+  // Listen for native TV virtual keyboard and remote speech input
+  useEffect(() => {
+    if (!isOpen) return;
+
+    window.onNativeKeyboardInput = (text: string) => {
+      if (text && text.trim()) {
+        setNameInput(text.trim());
+        playJoinSuccessSound();
+      }
+    };
+
+    window.onNativeVoiceInput = (text: string) => {
+      setIsListening(false);
+      const cleaned = text
+        .trim()
+        .replace(/^(?:change|set|rename|name)(?:\s+(?:the|our))?\s+(?:household|board|hub)?\s*(?:name)?\s+(?:to|as)\s+/i, '')
+        .replace(/^["']|["']$/g, '');
+      if (cleaned) {
+        setNameInput(cleaned);
+        playJoinSuccessSound();
+      }
+    };
+
+    return () => {
+      window.onNativeKeyboardInput = undefined;
+      window.onNativeVoiceInput = undefined;
+    };
+  }, [isOpen]);
+
+  // Launch Fire TV / Android TV virtual keyboard or focus input
+  const handleLaunchKeyboard = () => {
+    playPinPopSound();
+    const launched = voiceService.showTvKeyboard(nameInput, 'Set Household Name', (val) => {
+      if (val && val.trim()) {
+        setNameInput(val.trim());
+        playJoinSuccessSound();
+      }
+    });
+    if (!launched) {
+      inputRef.current?.focus();
+    }
+  };
 
   // Voice remote mic integration
   const handleStartVoice = () => {
@@ -204,6 +248,8 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
           onClose();
         } else if (focusTarget === 'voice') {
           handleStartVoice();
+        } else if (focusTarget === 'input') {
+          handleLaunchKeyboard();
         } else if (focusTarget === 'preset_0') {
           playPinPopSound();
           setNameInput(PRESET_NAMES[0]);
@@ -238,7 +284,7 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-150">
       <div className="w-full max-w-2xl bg-stone-900 border-4 border-amber-400 rounded-3xl p-8 shadow-2xl text-left relative flex flex-col justify-between">
         {/* Header with D-Pad Navigable Close Button */}
-        <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-6">
+        <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-5">
           <div className="flex items-center space-x-3">
             <div className="w-12 h-12 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
               <Home className="w-6 h-6" />
@@ -269,8 +315,19 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
           </button>
         </div>
 
+        {/* Alexa Skill & Remote Mic Banner */}
+        <div className="mb-5 p-3.5 bg-gradient-to-r from-amber-400/15 via-amber-500/10 to-transparent border border-amber-400/30 rounded-2xl flex items-center space-x-3 text-stone-200 text-sm shadow-inner">
+          <span className="text-2xl shrink-0">🎙️</span>
+          <div>
+            <span className="text-amber-400 font-bold block text-xs uppercase tracking-wider">Alexa Voice Skill Available</span>
+            <span className="text-stone-300 text-xs sm:text-sm">
+              Say to Alexa: <span className="text-white font-bold">"Alexa, tell PinBoard TV to rename household to [Name]"</span> or press <span className="text-amber-300 font-bold">"V"</span> for remote mic.
+            </span>
+          </div>
+        </div>
+
         {/* Voice Trigger Button */}
-        <div className="mb-6">
+        <div className="mb-5">
           <button
             onClick={handleStartVoice}
             data-focused={focusTarget === 'voice'}
@@ -291,23 +348,45 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
           </button>
         </div>
 
-        {/* Text Input Field */}
+        {/* Text Input Field with Virtual Keyboard Action */}
         <div className="mb-6">
-          <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">
-            Household Name
-          </label>
-          <input
-            type="text"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-            data-focused={focusTarget === 'input'}
-            placeholder="e.g., Living Room Family Hub"
-            className={`w-full bg-stone-950 text-white px-5 py-4 rounded-2xl text-2xl font-black transition-all border-2 focus:outline-none ${
-              focusTarget === 'input'
-                ? 'ring-4 ring-amber-400 border-amber-400 bg-stone-950 text-white shadow-[0_0_24px_rgba(251,191,36,0.35)]'
-                : 'border-white/20'
-            }`}
-          />
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-stone-400">
+              Household Name (Press OK to Open Virtual Keyboard)
+            </label>
+            <button
+              type="button"
+              onClick={handleLaunchKeyboard}
+              className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1.5 cursor-pointer bg-stone-800 px-2.5 py-1 rounded-lg border border-white/10"
+            >
+              <Keyboard className="w-3.5 h-3.5" />
+              <span>Launch Keyboard</span>
+            </button>
+          </div>
+          <div className="relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onClick={handleLaunchKeyboard}
+              data-focused={focusTarget === 'input'}
+              placeholder="e.g., Living Room Family Hub"
+              className={`w-full bg-stone-950 text-white px-5 py-4 rounded-2xl text-2xl font-black transition-all border-2 focus:outline-none pr-14 ${
+                focusTarget === 'input'
+                  ? 'ring-4 ring-amber-400 border-amber-400 bg-stone-950 text-white shadow-[0_0_24px_rgba(251,191,36,0.35)]'
+                  : 'border-white/20'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={handleLaunchKeyboard}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-amber-400 p-2"
+              title="Launch TV Soft Keyboard"
+            >
+              <Keyboard className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Quick Presets: 2D Spatial Grid (2 Columns) */}
