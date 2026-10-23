@@ -622,65 +622,84 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
 
     const availableNames = state.members.map((m) => m.name.split(' ')[0]);
 
+    const executeParsedVoiceAction = (parsed: any, target: PinNote | null) => {
+      setVoiceStatusText(parsed.summary);
+
+      if (parsed.action === 'SET_HOUSEHOLD_NAME' && parsed.newHouseholdName) {
+        storageSync.setHouseholdName(parsed.newHouseholdName);
+        playJoinSuccessSound();
+        confetti({ particleCount: 45, spread: 70, origin: { y: 0.6 } });
+      } else if (parsed.action === 'EDIT_CONTENT' && target) {
+        storageSync.updateNote(target.id, {
+          content: parsed.newContent,
+          title: parsed.newTitle || target.title,
+        });
+        playJoinSuccessSound();
+      } else if (parsed.action === 'APPEND_CHECKLIST' && parsed.checklistItems) {
+        const targetId = parsed.noteId || target?.id;
+        if (targetId) {
+          parsed.checklistItems.forEach((itemText: string) => {
+            storageSync.addChecklistItem(targetId, itemText, 'General', 'Voice');
+          });
+          playJoinSuccessSound();
+          confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
+        }
+      } else if (parsed.action === 'TOGGLE_ITEM' && target && parsed.toggleItemText) {
+        const newDone = storageSync.toggleChecklistItem(target.id, parsed.toggleItemText);
+        playCheckmarkSound(newDone);
+      } else if (parsed.action === 'REASSIGN' && target && parsed.assignedToName) {
+        const matchedMember = state.members.find((m) =>
+          m.name.toLowerCase().includes(parsed.assignedToName!.toLowerCase())
+        );
+        storageSync.updateNote(target.id, {
+          assignedToName: parsed.assignedToName,
+          assignedToMemberId: matchedMember?.id,
+        });
+        playJoinSuccessSound();
+      } else if (parsed.action === 'CREATE_NOTE' && parsed.newNote) {
+        // If it's a grocery note and we already have a grocery list, append instead of duplicate!
+        if (parsed.newNote.type === 'GROCERY') {
+          const existingGrocery = state.notes.find((n) => n.type === 'GROCERY');
+          if (existingGrocery) {
+            parsed.newNote.items?.forEach((itemText: string) => {
+              storageSync.addChecklistItem(existingGrocery.id, itemText, 'General', 'Voice');
+            });
+            playJoinSuccessSound();
+            confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
+            return;
+          }
+        }
+
+        storageSync.addNote({
+          type: parsed.newNote.type,
+          title: parsed.newNote.title,
+          content: parsed.newNote.content,
+          color: parsed.newNote.type === 'GROCERY' ? 'green' : parsed.newNote.type === 'CHORE' ? 'orange' : 'yellow',
+          magnet: 'red-dot',
+          rotationDeg: Math.random() * 3 - 1.5,
+          assignedToName: parsed.newNote.assignedToName,
+          priority: parsed.newNote.priority || 'MED',
+          pinned: true,
+          createdByMemberId: 'voice_remote',
+          items: parsed.newNote.items
+            ? parsed.newNote.items.map((it: string, idx: number) => ({
+                id: `it_${Date.now()}_${idx}`,
+                text: it,
+                done: false,
+              }))
+            : undefined,
+        });
+        playJoinSuccessSound();
+        confetti({ particleCount: 45, spread: 65, origin: { y: 0.6 } });
+      }
+    };
+
     const success = voiceService.startListening(
       (transcript) => {
         setIsListening(false);
         setVoiceTranscript(transcript);
-
-        const parsed = parseConversationalVoice(transcript, targetNote, availableNames);
-        setVoiceStatusText(parsed.summary);
-
-        if (parsed.action === 'SET_HOUSEHOLD_NAME' && parsed.newHouseholdName) {
-          storageSync.setHouseholdName(parsed.newHouseholdName);
-          playJoinSuccessSound();
-          confetti({ particleCount: 45, spread: 70, origin: { y: 0.6 } });
-        } else if (parsed.action === 'EDIT_CONTENT' && targetNote) {
-          storageSync.updateNote(targetNote.id, {
-            content: parsed.newContent,
-            title: parsed.newTitle || targetNote.title,
-          });
-          playJoinSuccessSound();
-        } else if (parsed.action === 'APPEND_CHECKLIST' && targetNote && parsed.checklistItems) {
-          parsed.checklistItems.forEach((itemText) => {
-            storageSync.addChecklistItem(targetNote.id, itemText, 'Voice Remote', 'Alexa Mic');
-          });
-          playJoinSuccessSound();
-          confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
-        } else if (parsed.action === 'TOGGLE_ITEM' && targetNote && parsed.toggleItemText) {
-          const newDone = storageSync.toggleChecklistItem(targetNote.id, parsed.toggleItemText);
-          playCheckmarkSound(newDone);
-        } else if (parsed.action === 'REASSIGN' && targetNote && parsed.assignedToName) {
-          const matchedMember = state.members.find((m) =>
-            m.name.toLowerCase().includes(parsed.assignedToName!.toLowerCase())
-          );
-          storageSync.updateNote(targetNote.id, {
-            assignedToName: parsed.assignedToName,
-            assignedToMemberId: matchedMember?.id,
-          });
-          playJoinSuccessSound();
-        } else if (parsed.action === 'CREATE_NOTE' && parsed.newNote) {
-          storageSync.addNote({
-            type: parsed.newNote.type,
-            title: parsed.newNote.title,
-            content: parsed.newNote.content,
-            color: 'yellow',
-            magnet: 'red-dot',
-            rotationDeg: Math.random() * 3 - 1.5,
-            assignedToName: parsed.newNote.assignedToName,
-            priority: parsed.newNote.priority || 'MED',
-            pinned: true,
-            createdByMemberId: 'voice_remote',
-            items: parsed.newNote.items
-              ? parsed.newNote.items.map((it, idx) => ({
-                  id: `it_${Date.now()}_${idx}`,
-                  text: it,
-                  done: false,
-                }))
-              : undefined,
-          });
-          playJoinSuccessSound();
-          confetti({ particleCount: 45, spread: 65, origin: { y: 0.6 } });
-        }
+        const parsed = parseConversationalVoice(transcript, targetNote, availableNames, state.notes);
+        executeParsedVoiceAction(parsed, targetNote);
       },
       (error) => {
         setIsListening(false);
@@ -700,60 +719,8 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
       );
       if (simulated) {
         setVoiceTranscript(simulated);
-        const parsed = parseConversationalVoice(simulated, targetNote, availableNames);
-        setVoiceStatusText(parsed.summary);
-
-        if (parsed.action === 'SET_HOUSEHOLD_NAME' && parsed.newHouseholdName) {
-          storageSync.setHouseholdName(parsed.newHouseholdName);
-          playJoinSuccessSound();
-          confetti({ particleCount: 45, spread: 70, origin: { y: 0.6 } });
-        } else if (parsed.action === 'EDIT_CONTENT' && targetNote) {
-          storageSync.updateNote(targetNote.id, {
-            content: parsed.newContent,
-            title: parsed.newTitle || targetNote.title,
-          });
-          playJoinSuccessSound();
-        } else if (parsed.action === 'APPEND_CHECKLIST' && targetNote && parsed.checklistItems) {
-          parsed.checklistItems.forEach((itemText) => {
-            storageSync.addChecklistItem(targetNote.id, itemText, 'Voice Remote', 'Alexa Mic');
-          });
-          playJoinSuccessSound();
-          confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
-        } else if (parsed.action === 'TOGGLE_ITEM' && targetNote && parsed.toggleItemText) {
-          const newDone = storageSync.toggleChecklistItem(targetNote.id, parsed.toggleItemText);
-          playCheckmarkSound(newDone);
-        } else if (parsed.action === 'REASSIGN' && targetNote && parsed.assignedToName) {
-          const matchedMember = state.members.find((m) =>
-            m.name.toLowerCase().includes(parsed.assignedToName!.toLowerCase())
-          );
-          storageSync.updateNote(targetNote.id, {
-            assignedToName: parsed.assignedToName,
-            assignedToMemberId: matchedMember?.id,
-          });
-          playJoinSuccessSound();
-        } else if (parsed.action === 'CREATE_NOTE' && parsed.newNote) {
-          storageSync.addNote({
-            type: parsed.newNote.type,
-            title: parsed.newNote.title,
-            content: parsed.newNote.content,
-            color: 'yellow',
-            magnet: 'red-dot',
-            rotationDeg: Math.random() * 3 - 1.5,
-            assignedToName: parsed.newNote.assignedToName,
-            priority: parsed.newNote.priority || 'MED',
-            pinned: true,
-            createdByMemberId: 'voice_remote',
-            items: parsed.newNote.items
-              ? parsed.newNote.items.map((it, idx) => ({
-                  id: `it_${Date.now()}_${idx}`,
-                  text: it,
-                  done: false,
-                }))
-              : undefined,
-          });
-          playJoinSuccessSound();
-          confetti({ particleCount: 45, spread: 65, origin: { y: 0.6 } });
-        }
+        const parsed = parseConversationalVoice(simulated, targetNote, availableNames, state.notes);
+        executeParsedVoiceAction(parsed, targetNote);
       }
     }
   };

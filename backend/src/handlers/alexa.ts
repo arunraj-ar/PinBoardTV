@@ -162,24 +162,42 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
         return buildSpeechResponse('I could not find your household data. Please re-link with your TV code.');
       }
 
+function cleanGroceryItemText(input: string): string {
+  let cleaned = input.trim();
+  cleaned = cleaned.replace(/^(?:please\s+)?(?:add|buy|get|we\s+need|need|put|pick\s+up|pin)\s+/i, '');
+  cleaned = cleaned.replace(/\s+(?:to|on|in|into|for)\s+(?:the\s+|my\s+|our\s+)?(?:grocery\s+list|groceries\s+list|groceries|grocery|shopping\s+list|store\s+list|board|pinboard)\s*$/i, '');
+  cleaned = cleaned.replace(/\s+(?:from|at)\s+(?:the\s+)?(?:store|supermarket|market)\s*$/i, '');
+  return cleaned.trim();
+}
+
       // 2. AddGroceryIntent
       if (intentName === 'AddGroceryIntent') {
-        const itemText = (slots.item?.value || '').trim();
-        if (!itemText) {
+        const rawItemText = (slots.item?.value || '').trim();
+        if (!rawItemText) {
+          return buildSpeechResponse('What item would you like to add to your grocery list?', false);
+        }
+
+        const cleaned = cleanGroceryItemText(rawItemText);
+        const itemNames = cleaned
+          .split(/(?:,\s*|\s+and\s+)/i)
+          .map((s) => cleanGroceryItemText(s))
+          .filter(Boolean);
+
+        if (itemNames.length === 0) {
           return buildSpeechResponse('What item would you like to add to your grocery list?', false);
         }
 
         // Find existing GROCERY note or create one
         let groceryNote = state.notes.find((n) => n.type === 'GROCERY');
-        const newItem = {
-          id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-          text: itemText,
+        const newItems = itemNames.map((text) => ({
+          id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          text,
           done: false,
           category: 'Produce',
-        };
+        }));
 
         if (groceryNote) {
-          const updatedItems = [...(groceryNote.items || []), newItem];
+          const updatedItems = [...(groceryNote.items || []), ...newItems];
           await updateNotePartial(householdId, groceryNote.id, { items: updatedItems });
           await broadcastToHousehold(householdId, {
             type: 'NOTE_UPDATED',
@@ -191,7 +209,7 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
             householdId,
             type: 'GROCERY',
             title: 'Weekly Groceries',
-            items: [newItem],
+            items: newItems,
             color: 'green',
             magnet: 'brass-pin',
             rotationDeg: 0,
@@ -206,13 +224,64 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
           });
         }
 
-        return buildSpeechResponse(`Added ${itemText} to your grocery list on the TV.`);
+        return buildSpeechResponse(`Added ${itemNames.join(', ')} to your grocery list on the TV.`);
       }
 
       // 3. AddNoteIntent
       if (intentName === 'AddNoteIntent') {
         const memberName = slots.member?.value?.trim();
-        const taskText = slots.task?.value?.trim() || 'Check with family';
+        const rawTaskText = slots.task?.value?.trim() || 'Check with family';
+
+        // Check if task is actually a grocery item spoken without explicitly specifying AddGroceryIntent
+        const isGroceryTask = !memberName && /grocery|groceries|buy|milk|eggs|bread|produce|supermarket/i.test(rawTaskText);
+
+        if (isGroceryTask) {
+          const cleaned = cleanGroceryItemText(rawTaskText);
+          const itemNames = cleaned
+            .split(/(?:,\s*|\s+and\s+)/i)
+            .map((s) => cleanGroceryItemText(s))
+            .filter(Boolean);
+
+          if (itemNames.length > 0) {
+            let groceryNote = state.notes.find((n) => n.type === 'GROCERY');
+            const newItems = itemNames.map((text) => ({
+              id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              text,
+              done: false,
+              category: 'Produce',
+            }));
+
+            if (groceryNote) {
+              const updatedItems = [...(groceryNote.items || []), ...newItems];
+              await updateNotePartial(householdId, groceryNote.id, { items: updatedItems });
+              await broadcastToHousehold(householdId, {
+                type: 'NOTE_UPDATED',
+                payload: { id: groceryNote.id, changes: { items: updatedItems } },
+              });
+            } else {
+              groceryNote = {
+                id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                householdId,
+                type: 'GROCERY',
+                title: 'Weekly Groceries',
+                items: newItems,
+                color: 'green',
+                magnet: 'brass-pin',
+                rotationDeg: 0,
+                createdByMemberId: 'alexa',
+                pinned: true,
+                updatedAt: new Date().toISOString(),
+              };
+              await putNote(groceryNote);
+              await broadcastToHousehold(householdId, {
+                type: 'NOTE_CREATED',
+                payload: groceryNote,
+              });
+            }
+
+            return buildSpeechResponse(`Added ${itemNames.join(', ')} to your grocery list on the TV.`);
+          }
+        }
 
         if (memberName) {
           // Assign as chore
@@ -224,7 +293,7 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
             id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             householdId,
             type: 'CHORE',
-            title: taskText,
+            title: rawTaskText,
             color: 'blue',
             magnet: 'blue-star',
             rotationDeg: -1.0,
@@ -241,7 +310,7 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
           });
 
           return buildSpeechResponse(
-            `Pinned a chore on the TV for ${memberName}: ${taskText}.`
+            `Pinned a chore on the TV for ${memberName}: ${rawTaskText}.`
           );
         } else {
           // General sticky note
@@ -249,7 +318,7 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
             id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             householdId,
             type: 'STICKY',
-            title: taskText,
+            title: rawTaskText,
             color: 'yellow',
             magnet: 'brass-pin',
             rotationDeg: 1.5,
@@ -264,7 +333,7 @@ export async function handler(event: AlexaRequestEnvelope): Promise<AlexaRespons
             payload: stickyNote,
           });
 
-          return buildSpeechResponse(`Pinned a note to the board: ${taskText}.`);
+          return buildSpeechResponse(`Pinned a note to the board: ${rawTaskText}.`);
         }
       }
 

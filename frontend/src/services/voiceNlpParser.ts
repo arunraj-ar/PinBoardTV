@@ -20,10 +20,22 @@ export interface ParsedVoiceAction {
   };
 }
 
+export function cleanGroceryItemText(input: string): string {
+  let cleaned = input.trim();
+  // Strip leading prefixes: "please add", "add", "buy", "get", "we need", "put", "pick up", "pin"
+  cleaned = cleaned.replace(/^(?:please\s+)?(?:add|buy|get|we\s+need|need|put|pick\s+up|pin)\s+/i, '');
+  // Strip trailing destination phrases: "to groceries", "to grocery list", "to the grocery list", "on the grocery list", "to my grocery list", "on groceries", etc.
+  cleaned = cleaned.replace(/\s+(?:to|on|in|into|for)\s+(?:the\s+|my\s+|our\s+)?(?:grocery\s+list|groceries\s+list|groceries|grocery|shopping\s+list|store\s+list|board|pinboard)\s*$/i, '');
+  // Strip trailing "from the store", "from store", "at the store"
+  cleaned = cleaned.replace(/\s+(?:from|at)\s+(?:the\s+)?(?:store|supermarket|market)\s*$/i, '');
+  return cleaned.trim();
+}
+
 export function parseConversationalVoice(
   rawTranscript: string,
   selectedNote: PinNote | null,
-  availableMemberNames: string[] = ['Mom', 'Dad', 'Alex', 'Maya']
+  availableMemberNames: string[] = ['Mom', 'Dad', 'Alex', 'Maya'],
+  existingNotes: PinNote[] = []
 ): ParsedVoiceAction {
   const text = rawTranscript.trim();
   const lower = text.toLowerCase();
@@ -63,10 +75,10 @@ export function parseConversationalVoice(
     // 3. Append checklist items to active card: "add [item]", "put [item] on list"
     const addToListMatch = text.match(/(?:add|include|put)\s+(.+?)(?:\s+(?:to|on)\s+(?:the\s+)?(?:list|card|board))?$/i);
     if (addToListMatch && (selectedNote.type === 'GROCERY' || selectedNote.type === 'CHORE')) {
-      const itemsString = addToListMatch[1].trim();
+      const itemsString = cleanGroceryItemText(addToListMatch[1]);
       const items = itemsString
         .split(/(?:,\s*|\s+and\s+)/i)
-        .map((s) => s.trim())
+        .map((s) => cleanGroceryItemText(s))
         .filter(Boolean);
 
       return {
@@ -124,11 +136,22 @@ export function parseConversationalVoice(
     lower.includes('apples');
 
   if (isGrocery) {
-    const cleaned = text.replace(/^(?:add|buy|get|we need)\s+/i, '');
+    const cleaned = cleanGroceryItemText(text);
     const items = cleaned
       .split(/(?:,\s*|\s+and\s+)/i)
-      .map((s) => s.trim())
+      .map((s) => cleanGroceryItemText(s))
       .filter(Boolean);
+
+    // If an existing grocery card is already on the board, append to it!
+    const existingGrocery = existingNotes.find((n) => n.type === 'GROCERY');
+    if (existingGrocery) {
+      return {
+        action: 'APPEND_CHECKLIST',
+        noteId: existingGrocery.id,
+        checklistItems: items,
+        summary: `Added ${items.join(', ')} to ${existingGrocery.title}`,
+      };
+    }
 
     return {
       action: 'CREATE_NOTE',
@@ -149,7 +172,10 @@ export function parseConversationalVoice(
         break;
       }
     }
-    const cleanTitle = text.replace(/^(?:add chore|remind \w+ to|tell \w+ to)\s+/i, '').trim();
+    const cleanTitle = text
+      .replace(/^(?:please\s+)?(?:add\s+chore|remind\s+\w+\s+to|tell\s+\w+\s+to|pin\s+a\s+chore\s+for\s+\w+\s+to|assign\s+\w+\s+to)\s+/i, '')
+      .replace(/\s+(?:to|on)\s+(?:the\s+)?(?:chore\s+list|board|pinboard)\s*$/i, '')
+      .trim();
 
     return {
       action: 'CREATE_NOTE',

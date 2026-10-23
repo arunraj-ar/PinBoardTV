@@ -15,6 +15,7 @@ import {
   createCleanHouseholdState,
 } from './seedData';
 import { awsCloudDriver } from './awsCloudDriver';
+import { cleanGroceryItemText } from './voiceNlpParser';
 
 const LOCAL_STORAGE_KEY = 'pinboard_household_state_v4';
 const SESSION_STORAGE_KEY = 'pinboard_member_session';
@@ -274,7 +275,7 @@ class StorageSyncService {
       if (isGrocery) {
         const groceryCard = this.currentState.notes.find((n) => n.type === 'GROCERY');
         if (groceryCard) {
-          const cleanItem = note.title.replace(/^(?:add|buy|get|we need)\s+/i, '');
+          const cleanItem = cleanGroceryItemText(note.title);
           this.addChecklistItem(groceryCard.id, cleanItem, 'AI Auto-Filed', 'Bedrock AI');
           return groceryCard;
         }
@@ -294,7 +295,10 @@ class StorageSyncService {
             break;
           }
         }
-        const cleanTitle = note.title.replace(/^(?:add chore|remind \w+ to|tell \w+ to)\s+/i, '');
+        const cleanTitle = note.title
+          .replace(/^(?:please\s+)?(?:add\s+chore|remind\s+\w+\s+to|tell\s+\w+\s+to|pin\s+a\s+chore\s+for\s+\w+\s+to|assign\s+\w+\s+to)\s+/i, '')
+          .replace(/\s+(?:to|on)\s+(?:the\s+)?(?:chore\s+list|board|pinboard)\s*$/i, '')
+          .trim();
         const choreNote: PinNote = {
           id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           householdId: this.currentState.householdId,
