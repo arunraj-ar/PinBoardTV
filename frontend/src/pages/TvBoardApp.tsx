@@ -35,7 +35,6 @@ import { parseConversationalVoice } from '../services/voiceNlpParser';
 import { NoteCard } from '../components/NoteCard';
 import { organizeNotesIntoPages } from '../services/aiNoteOrganizer';
 import { HouseholdNameModal } from '../components/HouseholdNameModal';
-import { awsCloudDriver } from '../services/awsCloudDriver';
 
 export interface TvBoardAppProps {
   onBackToScreensaver?: () => void;
@@ -88,7 +87,7 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
       const timer = setTimeout(() => {
         setVoiceStatusText('');
         setVoiceTranscript('');
-      }, 3500);
+      }, 9000);
       return () => clearTimeout(timer);
     }
   }, [isListening, voiceStatusText, voiceTranscript]);
@@ -663,139 +662,42 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
     deleteConfirmFocusIndex,
   ]);
 
-  // Voice Input & Context-Aware Conversational Parsing
+  // Voice Guidance & Context-Aware Alexa Utterance Suggestions
   const triggerVoiceInput = (targetNote: PinNote | null) => {
     playPinPopSound();
     setVoiceTranscript('');
-    setVoiceStatusText(
-      targetNote
-        ? `Listening for changes to "${targetNote.title}"...`
-        : 'Listening for new note or grocery item...'
-    );
-    setIsListening(true);
+    setIsListening(false);
 
-    const availableNames = state.members.map((m) => m.name.split(' ')[0]);
+    // Provide immediate, clear voice commands for the Alexa remote mic
+    let guideMessage = '';
+    if (!targetNote) {
+      guideMessage = '🎙️ Hold the Alexa remote mic & say: "Alexa, tell Pin Board to add oat milk to groceries" or "Alexa, tell Pin Board to remind Alex to clean room"';
+    } else if (targetNote.type === 'GROCERY') {
+      guideMessage = '🎙️ Hold the Alexa remote mic & say: "Alexa, tell Pin Board to add oat milk to groceries" or "Alexa, tell Pin Board to check off eggs"';
+    } else if (targetNote.type === 'CHORE') {
+      guideMessage = `🎙️ Hold the Alexa remote mic & say: "Alexa, tell Pin Board to remind Alex to ${targetNote.title}" or "Alexa, tell Pin Board to check off ${targetNote.title}"`;
+    } else if (targetNote.type === 'STICKY') {
+      guideMessage = `🎙️ Hold the Alexa remote mic & say: "Alexa, tell Pin Board to edit ${targetNote.title} to: Pick up Grandma at 3 PM"`;
+    } else if (targetNote.type === 'POLAROID') {
+      guideMessage = '🎙️ Hold the Alexa remote mic & say: "Alexa, tell Pin Board to change photo caption to: Family Hiking Trip"';
+    } else {
+      guideMessage = '🎙️ Hold the Alexa remote mic & say: "Alexa, tell Pin Board to add milk to groceries"';
+    }
 
-    const executeParsedVoiceAction = (parsed: any, target: PinNote | null) => {
-      setVoiceStatusText(parsed.summary);
+    setVoiceStatusText(guideMessage);
 
-      if (parsed.action === 'SET_HOUSEHOLD_NAME' && parsed.newHouseholdName) {
-        storageSync.setHouseholdName(parsed.newHouseholdName);
-        playJoinSuccessSound();
-        confetti({ particleCount: 45, spread: 70, origin: { y: 0.6 } });
-      } else if (parsed.action === 'EDIT_CONTENT' && target) {
-        storageSync.updateNote(target.id, {
-          content: parsed.newContent,
-          title: parsed.newTitle || target.title,
-        });
-        playJoinSuccessSound();
-      } else if (parsed.action === 'APPEND_CHECKLIST' && parsed.checklistItems) {
-        const targetId = parsed.noteId || target?.id;
-        if (targetId) {
-          parsed.checklistItems.forEach((itemText: string) => {
-            storageSync.addChecklistItem(targetId, itemText, 'General', 'Voice');
-          });
-          playJoinSuccessSound();
-          confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
-        }
-      } else if (parsed.action === 'TOGGLE_ITEM' && target && parsed.toggleItemText) {
-        const newDone = storageSync.toggleChecklistItem(target.id, parsed.toggleItemText);
-        playCheckmarkSound(newDone);
-      } else if (parsed.action === 'REASSIGN' && target && parsed.assignedToName) {
-        const matchedMember = state.members.find((m) =>
-          m.name.toLowerCase().includes(parsed.assignedToName!.toLowerCase())
-        );
-        storageSync.updateNote(target.id, {
-          assignedToName: parsed.assignedToName,
-          assignedToMemberId: matchedMember?.id,
-        });
-        playJoinSuccessSound();
-      } else if (parsed.action === 'CREATE_NOTE' && parsed.newNote) {
-        // If it's a grocery note and we already have a grocery list, append instead of duplicate!
-        if (parsed.newNote.type === 'GROCERY') {
-          const existingGrocery = state.notes.find((n) => n.type === 'GROCERY');
-          if (existingGrocery) {
-            parsed.newNote.items?.forEach((itemText: string) => {
-              storageSync.addChecklistItem(existingGrocery.id, itemText, 'General', 'Voice');
-            });
-            playJoinSuccessSound();
-            confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
-            return;
+    // Register native voice listener in case Fire TV native bridge returns speech
+    if (typeof window !== 'undefined') {
+      window.onNativeVoiceInput = (spokenText: string) => {
+        if (spokenText && spokenText.trim()) {
+          setVoiceTranscript(spokenText.trim());
+          const availableNames = state.members.map((m) => m.name.split(' ')[0]);
+          const parsed = parseConversationalVoice(spokenText.trim(), targetNote, availableNames, state.notes);
+          if (parsed?.summary) {
+            setVoiceStatusText(parsed.summary);
           }
         }
-
-        storageSync.addNote({
-          type: parsed.newNote.type,
-          title: parsed.newNote.title,
-          content: parsed.newNote.content,
-          color: parsed.newNote.type === 'GROCERY' ? 'green' : parsed.newNote.type === 'CHORE' ? 'orange' : 'yellow',
-          magnet: 'red-dot',
-          rotationDeg: Math.random() * 3 - 1.5,
-          assignedToName: parsed.newNote.assignedToName,
-          priority: parsed.newNote.priority || 'MED',
-          pinned: true,
-          createdByMemberId: 'voice_remote',
-          items: parsed.newNote.items
-            ? parsed.newNote.items.map((it: string, idx: number) => ({
-                id: `it_${Date.now()}_${idx}`,
-                text: it,
-                done: false,
-              }))
-            : undefined,
-        });
-        playJoinSuccessSound();
-        confetti({ particleCount: 45, spread: 65, origin: { y: 0.6 } });
-      }
-    };
-
-    const handleVoiceResult = async (spokenText: string) => {
-      setIsListening(false);
-      setVoiceTranscript(spokenText);
-
-      // 1. Alexa High-Precision NLP Engine
-      try {
-        const alexaResult = await awsCloudDriver.processVoiceWithAlexaNLP(state.householdId, spokenText);
-        if (alexaResult && alexaResult.success) {
-          setVoiceStatusText(`Alexa: ${alexaResult.summary}`);
-          playJoinSuccessSound();
-          confetti({ particleCount: 50, spread: 70, origin: { y: 0.5 } });
-          if (alexaResult.action === 'SET_HOUSEHOLD_NAME' && alexaResult.payload?.name) {
-            storageSync.setHouseholdName(alexaResult.payload.name);
-          }
-          return;
-        }
-      } catch (alexaErr) {
-        console.warn('Alexa NLP cloud route unavailable, falling back to local engine:', alexaErr);
-      }
-
-      // 2. Local Fallback Voice NLP
-      const parsed = parseConversationalVoice(spokenText, targetNote, availableNames, state.notes);
-      executeParsedVoiceAction(parsed, targetNote);
-    };
-
-    const success = voiceService.startListening(
-      (transcript) => {
-        handleVoiceResult(transcript);
-      },
-      (error) => {
-        setIsListening(false);
-        setVoiceStatusText(`Microphone: ${error}`);
-      },
-      () => {
-        setIsListening(false);
-      }
-    );
-
-    if (!success) {
-      setIsListening(false);
-      const simulated = prompt(
-        targetNote
-          ? `[Voice Remote Simulation] Speak your change to "${targetNote.title}":\n(e.g., "Edit this to: Pick up Grandma at 3pm", "Add organic oat milk", "Assign to Alex")`
-          : '[Voice Remote Simulation] Speak your command:\n(e.g., "Add oat milk to groceries", "Rename household to The Cozy Cottage", "Remind Alex to take out trash")'
-      );
-      if (simulated) {
-        handleVoiceResult(simulated);
-      }
+      };
     }
   };
 
@@ -847,22 +749,18 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
             className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer border-2 ${
               focusArea === 'header' && headerFocusIndex === 0
                 ? 'ring-4 ring-amber-400 bg-amber-400 text-stone-950 font-black border-amber-300 shadow-[0_0_24px_rgba(251,191,36,0.4)]'
-                : isListening
-                ? 'bg-purple-600 text-white ring-4 ring-purple-400 animate-pulse border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.4)]'
                 : 'bg-stone-900/90 hover:bg-stone-800 text-stone-200 border-white/20'
             }`}
-            title="Press to speak a new pin"
+            title="Alexa voice commands for PinBoard"
           >
             <Mic
               className={`w-4 h-4 ${
                 focusArea === 'header' && headerFocusIndex === 0
                   ? 'text-stone-950'
-                  : isListening
-                  ? 'text-white'
                   : 'text-amber-400'
               }`}
             />
-            <span>{isListening ? 'Listening...' : 'Voice Pin'}</span>
+            <span>🎙️ Alexa Voice</span>
           </button>
 
           {/* Settings Button */}
@@ -890,15 +788,15 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
 
       {/* Voice Status Toast with Auto-Dismiss & Close */}
       {(voiceStatusText || voiceTranscript) && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-purple-950/95 border-2 border-purple-400 text-purple-100 px-6 py-2.5 rounded-full text-base font-black shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200">
-          <Sparkles className="w-5 h-5 text-purple-300 animate-spin" />
-          <span>{voiceStatusText || `"${voiceTranscript}"`}</span>
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-stone-900/95 border-2 border-amber-400 text-amber-200 px-7 py-3.5 rounded-2xl text-base font-bold shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200 max-w-4xl text-center backdrop-blur-md">
+          <Sparkles className="w-5 h-5 text-amber-300 shrink-0 animate-pulse" />
+          <span className="text-white font-medium">{voiceStatusText || `"${voiceTranscript}"`}</span>
           <button
             onClick={() => {
               setVoiceStatusText('');
               setVoiceTranscript('');
             }}
-            className="ml-2 text-purple-300 hover:text-white cursor-pointer p-0.5 rounded-full hover:bg-purple-800/50"
+            className="ml-3 text-stone-400 hover:text-white cursor-pointer p-1 rounded-full hover:bg-stone-800 shrink-0"
             title="Dismiss"
           >
             <X className="w-4 h-4" />
@@ -1184,16 +1082,15 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
                     <button
                       onClick={() => triggerVoiceInput(focusedModalNote)}
                       data-focused={isVoiceFocused}
-                      className={`flex items-center justify-center space-x-2 px-5 py-3 rounded-xl font-bold text-base transition-all cursor-pointer whitespace-nowrap min-w-[130px] border-2 ${
+                      className={`flex items-center justify-center space-x-2 px-5 py-3 rounded-xl font-bold text-base transition-all cursor-pointer whitespace-nowrap min-w-[140px] border-2 ${
                         isVoiceFocused
                           ? 'ring-4 ring-amber-500 border-amber-300 bg-amber-400 text-stone-950 font-black shadow-[0_0_20px_rgba(251,191,36,0.4)]'
-                          : isListening
-                          ? 'bg-purple-600 text-white ring-4 ring-purple-400 border-purple-400 animate-pulse'
                           : 'bg-black/10 hover:bg-black/20 text-stone-900 border-black/10'
                       }`}
+                      title="See Alexa voice commands for this note"
                     >
                       <Mic className="w-5 h-5 shrink-0 text-current" />
-                      <span>{isListening ? 'Listening...' : 'Voice Edit'}</span>
+                      <span>Voice Tip (Alexa)</span>
                     </button>
                   );
                 })()}
@@ -1221,6 +1118,12 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
                   );
                 })()}
               </div>
+
+              {/* Hands-Free Voice Tip */}
+              <p className="text-xs text-stone-700 font-semibold text-center mt-3 flex items-center justify-center gap-1.5 opacity-80">
+                <Mic className="w-3.5 h-3.5 text-amber-700" />
+                <span>Tip: Hold the Alexa mic button on your remote to edit, add items, or check off tasks hands-free.</span>
+              </p>
             </div>
           </div>
         </div>

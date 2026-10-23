@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Mic, Check, X, Keyboard } from 'lucide-react';
+import { Home, Mic, Check, X } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
 import { playPinPopSound, playDpadNavSound, playJoinSuccessSound } from '../services/soundEffects';
 
@@ -78,36 +78,18 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
     };
   }, [isOpen]);
 
-  // Launch Fire TV / Android TV virtual keyboard or focus input
+  const [voiceTipMessage, setVoiceTipMessage] = useState<string>('');
+
+  // Keyboard disabled on 10-foot TV UI - direct to presets or companion
   const handleLaunchKeyboard = () => {
     playPinPopSound();
-    const launched = voiceService.showTvKeyboard(nameInput, 'Set Household Name', (val) => {
-      if (val && val.trim()) {
-        setNameInput(val.trim());
-        playJoinSuccessSound();
-      }
-    });
-    if (!launched) {
-      inputRef.current?.focus();
-    }
+    setFocusTarget('preset_0');
   };
 
-  // Voice remote mic integration
+  // Voice remote mic guidance
   const handleStartVoice = () => {
     playPinPopSound();
-    setIsListening(true);
-    voiceService.startListening((transcript) => {
-      setIsListening(false);
-      // Clean up common voice prefixes
-      const cleaned = transcript
-        .trim()
-        .replace(/^(?:change|set|rename|name)(?:\s+(?:the|our))?\s+(?:household|board|hub)?\s*(?:name)?\s+(?:to|as)\s+/i, '')
-        .replace(/^["']|["']$/g, '');
-      if (cleaned) {
-        setNameInput(cleaned);
-        playJoinSuccessSound();
-      }
-    });
+    setVoiceTipMessage(`🎙️ Hold the Alexa mic button on your remote and say: "Alexa, tell Pin Board to rename household to ${nameInput || 'The Cozy Cottage'}"`);
   };
 
   const handleSave = () => {
@@ -321,71 +303,64 @@ export const HouseholdNameModal: React.FC<HouseholdNameModalProps> = ({
           <div>
             <span className="text-amber-400 font-bold block text-xs uppercase tracking-wider">Alexa Voice Skill Available</span>
             <span className="text-stone-300 text-xs sm:text-sm">
-              Say to Alexa: <span className="text-white font-bold">"Alexa, tell PinBoard TV to rename household to [Name]"</span> or press <span className="text-amber-300 font-bold">"V"</span> for remote mic.
+              Say to Alexa: <span className="text-white font-bold">"Alexa, tell Pin Board to rename household to [Name]"</span> or pick a preset below.
             </span>
           </div>
         </div>
 
-        {/* Voice Trigger Button */}
+        {/* Voice Tip Message Toast (when user clicks voice button) */}
+        {voiceTipMessage && (
+          <div className="mb-5 p-4 bg-amber-400 text-stone-950 font-black rounded-2xl flex items-center justify-between text-base border-2 border-amber-300 shadow-xl animate-in fade-in duration-200">
+            <span>{voiceTipMessage}</span>
+            <button
+              type="button"
+              onClick={() => setVoiceTipMessage('')}
+              className="ml-3 p-1 rounded-full hover:bg-stone-950/10 text-stone-950"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
+        {/* Voice Trigger Button (Shows Alexa Example) */}
         <div className="mb-5">
           <button
+            type="button"
             onClick={handleStartVoice}
             data-focused={focusTarget === 'voice'}
             className={`w-full py-4 px-6 rounded-2xl font-bold text-lg flex items-center justify-center space-x-3 transition-all cursor-pointer border-2 ${
               focusTarget === 'voice'
                 ? 'ring-4 ring-amber-400 bg-amber-400 text-stone-950 font-black shadow-[0_0_24px_rgba(251,191,36,0.4)] border-amber-300'
-                : isListening
-                ? 'bg-purple-600 text-white ring-4 ring-purple-400 animate-pulse border-purple-400 shadow-[0_0_24px_rgba(168,85,247,0.4)]'
                 : 'bg-stone-800/90 hover:bg-stone-800 text-stone-200 border-white/10'
             }`}
           >
             <Mic className={`w-6 h-6 ${focusTarget === 'voice' ? 'text-stone-950' : 'text-amber-400'}`} />
-            <span>
-              {isListening
-                ? 'Listening... Speak household name now'
-                : 'Speak Name with Remote Mic (or press "V")'}
-            </span>
+            <span>Voice Rename Example (Alexa Remote)</span>
           </button>
         </div>
 
-        {/* Text Input Field with Virtual Keyboard Action */}
+        {/* Active Name Display (No On-Screen Keyboard Needed) */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-xs font-bold uppercase tracking-wider text-stone-400">
-              Household Name (Press OK to Open Virtual Keyboard)
+              Active Household Name
             </label>
-            <button
-              type="button"
-              onClick={handleLaunchKeyboard}
-              className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1.5 cursor-pointer bg-stone-800 px-2.5 py-1 rounded-lg border border-white/10"
-            >
-              <Keyboard className="w-3.5 h-3.5" />
-              <span>Launch Keyboard</span>
-            </button>
+            <span className="text-xs text-amber-400 font-bold">Select a preset below to rename</span>
           </div>
           <div className="relative">
             <input
               ref={inputRef}
               type="text"
+              readOnly
               value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              onClick={handleLaunchKeyboard}
               data-focused={focusTarget === 'input'}
               placeholder="e.g., Living Room Family Hub"
-              className={`w-full bg-stone-950 text-white px-5 py-4 rounded-2xl text-2xl font-black transition-all border-2 focus:outline-none pr-14 ${
+              className={`w-full bg-stone-950 text-white px-5 py-4 rounded-2xl text-2xl font-black transition-all border-2 focus:outline-none ${
                 focusTarget === 'input'
                   ? 'ring-4 ring-amber-400 border-amber-400 bg-stone-950 text-white shadow-[0_0_24px_rgba(251,191,36,0.35)]'
                   : 'border-white/20'
               }`}
             />
-            <button
-              type="button"
-              onClick={handleLaunchKeyboard}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-amber-400 p-2"
-              title="Launch TV Soft Keyboard"
-            >
-              <Keyboard className="w-6 h-6" />
-            </button>
           </div>
         </div>
 
