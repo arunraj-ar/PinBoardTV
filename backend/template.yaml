@@ -79,12 +79,18 @@ Resources:
       StageName: '$default'
       CorsConfiguration:
         AllowOrigins:
-          - '*'
+          - 'https://di1gpgdox7pk1.cloudfront.net'
+          - 'http://localhost:5173'
+          - 'http://localhost:3000'
+          - 'https://localho.st'
+          - 'https://localho.st:5173'
+          - 'http://localho.st:5173'
         AllowHeaders:
           - Content-Type
           - Authorization
           - X-Household-Id
           - X-Member-Token
+          - X-Otp-Code
         AllowMethods:
           - GET
           - POST

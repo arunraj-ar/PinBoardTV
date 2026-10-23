@@ -20,11 +20,18 @@ export class AwsCloudDriver {
   // REST API Methods
   // ---------------------------------------------------------------------------
 
-  public async initHousehold(householdName: string): Promise<any> {
+  public async initHousehold(params: string | {
+    householdId?: string;
+    householdName?: string;
+    hostSecret?: string;
+    otpCode?: string;
+    otpExpiresAt?: number;
+  }): Promise<any> {
+    const body = typeof params === 'string' ? { householdName: params } : params;
     const res = await fetch(`${this.apiUrl}/household/init`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ householdName }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Failed to initialize household: ${res.statusText}`);
     return res.json();
@@ -70,19 +77,20 @@ export class AwsCloudDriver {
     if (!res.ok) throw new Error(`Failed to update household name: ${res.statusText}`);
   }
 
-  public async getHouseholdState(householdId: string): Promise<HouseholdState | null> {
-    const res = await fetch(`${this.apiUrl}/household/state?householdId=${householdId}`, {
-      headers: { 'X-Household-Id': householdId },
-    });
+  public async getHouseholdState(householdId: string, otpCode?: string, name?: string): Promise<HouseholdState | null> {
+    const query = new URLSearchParams({ householdId });
+    if (otpCode) query.set('otp', otpCode);
+    if (name) query.set('name', name);
+
+    // Use standard query parameters without custom headers to avoid triggering browser CORS OPTIONS preflight
+    const res = await fetch(`${this.apiUrl}/household/state?${query.toString()}`);
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Failed to fetch household state: ${res.statusText}`);
     return res.json();
   }
 
   public async getNotes(householdId: string): Promise<PinNote[]> {
-    const res = await fetch(`${this.apiUrl}/notes?householdId=${householdId}`, {
-      headers: { 'X-Household-Id': householdId },
-    });
+    const res = await fetch(`${this.apiUrl}/notes?householdId=${encodeURIComponent(householdId)}`);
     if (!res.ok) throw new Error(`Failed to fetch notes: ${res.statusText}`);
     return res.json();
   }

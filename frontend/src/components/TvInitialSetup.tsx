@@ -66,9 +66,23 @@ export const TvInitialSetup: React.FC<TvInitialSetupProps> = ({ onSetupComplete 
     return () => unsubscribe();
   }, [onSetupComplete]);
 
+  // Auto-refresh OTP if sitting on setup screen and passkey is expiring (or already expired)
+  useEffect(() => {
+    const checkOtpExpiry = () => {
+      const current = storageSync.getState();
+      if (!current.isConfigured && (!current.currentOtp || !current.otpExpiresAt || Date.now() >= current.otpExpiresAt - 30000)) {
+        storageSync.rotateOtp();
+      }
+    };
+
+    checkOtpExpiry();
+    const interval = setInterval(checkOtpExpiry, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Magic QR pairing URL
   const magicQrUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/join?hh=${state.householdId}&code=${state.currentOtp}`
+    ? `${window.location.origin}/join?hh=${encodeURIComponent(state.householdId)}&code=${encodeURIComponent(state.currentOtp)}`
     : `https://pinboardtv.local/join?hh=${state.householdId}&code=${state.currentOtp}`;
 
   // Remote D-Pad Navigation

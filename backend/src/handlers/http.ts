@@ -20,20 +20,38 @@ import { broadcastToHousehold } from '../services/websocketNotifier.js';
 import { handler as alexaHandler } from './alexa.js';
 import type { HouseholdMember, PinNote } from '../types.js';
 
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/di1gpgdox7pk1\.cloudfront\.net$/,
+  /^https:\/\/[a-z0-9]+\.cloudfront\.net$/,
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+  /^https?:\/\/localho\.st(:\d+)?$/,
+];
+
+let currentRequestOrigin: string | undefined;
+
+function getCorsOrigin(origin?: string): string {
+  if (!origin) return 'https://di1gpgdox7pk1.cloudfront.net';
+  const isAllowed = ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+  return isAllowed ? origin : 'https://di1gpgdox7pk1.cloudfront.net';
+}
+
 function jsonResponse(statusCode: number, body: any): APIGatewayProxyResultV2 {
   return {
     statusCode,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': getCorsOrigin(currentRequestOrigin),
       'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Household-Id,X-Member-Token',
+      'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Household-Id,X-Member-Token,X-Otp-Code',
+      'Vary': 'Origin',
     },
     body: JSON.stringify(body),
   };
 }
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+  currentRequestOrigin = event.headers?.['origin'] || event.headers?.['Origin'];
   const method = event.requestContext.http.method.toUpperCase();
   let rawPath = event.rawPath || event.requestContext.http.path || '/';
   if (rawPath.startsWith('/prod/')) {
@@ -64,11 +82,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     // 1. Household Endpoints
     // -------------------------------------------------------------------------
     if (rawPath === '/household/init' && method === 'POST') {
-      const householdId = `hh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const hostSecret = `sec_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpiresAt = Date.now() + 15 * 60 * 1000;
-      const householdName = body.householdName || 'Living Room PinBoard';
+      const householdId = body.householdId || `hh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const hostSecret = body.hostSecret || `sec_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      const otpCode = body.otpCode || Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpiresAt = body.otpExpiresAt || Date.now() + 15 * 60 * 1000;
+      const householdName = body.householdName || 'My Family PinBoard';
 
       const state = await createHousehold(
         householdId,
@@ -113,7 +131,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     if (rawPath === '/household/join' && method === 'POST') {
       let householdId = body.householdId;
-      const otpCode = body.otpCode;
+      const otpCode = (body.otpCode || '').trim();
       const displayName = (body.displayName || 'Family Member').trim();
       const color = body.color || 'yellow';
 
@@ -127,12 +145,17 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       }
 
       if (!householdId) {
-        return jsonResponse(404, { error: 'Invalid or expired OTP code' });
+        return jsonResponse(404, { error: 'Invalid or expired 6-digit passkey. Please check the TV screen.' });
       }
 
       const state = await getHousehold(householdId);
       if (!state) {
         return jsonResponse(404, { error: 'Household not found' });
+      }
+
+      // Validate OTP and expiration
+      if (state.currentOtp !== otpCode || (state.otpExpiresAt && state.otpExpiresAt < Date.now())) {
+        return jsonResponse(400, { error: 'Invalid or expired 6-digit passkey. Please check the TV screen.' });
       }
 
       const isFirstMember = state.members.length === 0;
@@ -196,9 +219,29 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         return jsonResponse(400, { error: 'Missing householdId' });
       }
 
-      const state = await getHousehold(householdId);
+      let state = await getHousehold(householdId);
       if (!state) {
-        return jsonResponse(404, { error: 'Household not found' });
+        // Auto-provision brand new household on first touch so TV QR setup never 404s
+        const otpCode = event.queryStringParameters?.otp || event.headers['x-otp-code'] || Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiresAt = Date.now() + 15 * 60 * 1000;
+        const hostSecret = `sec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const householdName = event.queryStringParameters?.name || 'My Family PinBoard';
+
+        state = await createHousehold(
+          householdId,
+          householdName,
+          hostSecret,
+          otpCode,
+          otpExpiresAt,
+          clientIp
+        );
+      } else if (!state.isConfigured && (!state.otpExpiresAt || state.otpExpiresAt < Date.now())) {
+        // If household is awaiting setup and OTP is expired, auto-rotate to a fresh 15-minute OTP
+        const newOtp = event.queryStringParameters?.otp || Math.floor(100000 + Math.random() * 900000).toString();
+        const newExpiresAt = Date.now() + 15 * 60 * 1000;
+        await rotateOtp(householdId, newOtp, newExpiresAt);
+        state.currentOtp = newOtp;
+        state.otpExpiresAt = newExpiresAt;
       }
 
       // Hide hostSecret from public response

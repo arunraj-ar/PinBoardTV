@@ -42,20 +42,22 @@ export function App() {
   useEffect(() => {
     const handleLocationChange = () => {
       const path = window.location.pathname;
+      const rawHash = window.location.hash.split('?')[0].replace(/^#\/?/, '/');
+      const activePath = (rawHash && rawHash !== '/') ? rawHash : path;
       const currentSession = storageSync.getSession();
       setSession(currentSession);
 
-      if (path === '/tv/screensaver') {
+      if (activePath === '/tv/screensaver') {
         setRoute('tv_screensaver');
-      } else if (path === '/tv' || path.startsWith('/tv/board') || path === '/') {
+      } else if (activePath === '/tv' || activePath.startsWith('/tv/board') || activePath === '/') {
         setRoute('tv_board');
-      } else if (path === '/mobile' || path.startsWith('/mobile/app')) {
+      } else if (activePath === '/mobile' || activePath.startsWith('/mobile/app')) {
         if (!currentSession) {
           setRoute('mobile_join');
         } else {
           setRoute('mobile_app');
         }
-      } else if (path === '/join') {
+      } else if (activePath === '/join') {
         setRoute('mobile_join');
       } else {
         setRoute('tv_board');
@@ -64,7 +66,11 @@ export function App() {
 
     handleLocationChange();
     window.addEventListener('popstate', handleLocationChange);
-    return () => window.removeEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
   }, []);
 
   // Keyboard shortcut: Press 'H' to toggle floating dev bar if isDevMode

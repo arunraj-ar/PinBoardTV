@@ -29,12 +29,15 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
   const [householdState, setHouseholdState] = useState(storageSync.getState());
   const isFirstAdmin = householdState.members.length === 0 || !householdState.isConfigured;
 
-  // Extract query parameters from Magic QR URL: ?hh=...&code=... or ?householdId=...&otp=...
+  // Extract query parameters from Magic QR URL: ?hh=...&code=... or ?householdId=...&otp=... (handles both search and hash query strings)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const hhParam = params.get('hh') || params.get('householdId');
-      const codeParam = params.get('code') || params.get('otp');
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+      const hashParams = new URLSearchParams(hashQuery);
+
+      const hhParam = searchParams.get('hh') || searchParams.get('householdId') || hashParams.get('hh') || hashParams.get('householdId');
+      const codeParam = searchParams.get('code') || searchParams.get('otp') || hashParams.get('code') || hashParams.get('otp');
 
       if (hhParam) {
         setHouseholdId(hhParam);
@@ -72,7 +75,7 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
     return unsubscribe;
   }, [onJoinSuccess, status]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -89,28 +92,33 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
     setStatus('SUBMITTING');
     playPinPopSound();
 
-    const result = storageSync.joinHousehold(
-      householdId,
-      otpCode,
-      displayName.trim(),
-      selectedColor
-    );
+    try {
+      const result = await storageSync.joinHousehold(
+        householdId,
+        otpCode,
+        displayName.trim(),
+        selectedColor
+      );
 
-    if (!result.success) {
+      if (!result.success) {
+        setStatus('IDLE');
+        setErrorMessage(result.error || 'Failed to join household.');
+        return;
+      }
+
+      if (result.status === 'APPROVED') {
+        setStatus('SUCCESS');
+        playJoinSuccessSound();
+        confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+        setTimeout(() => {
+          onJoinSuccess();
+        }, 900);
+      } else {
+        setStatus('WAITING_APPROVAL');
+      }
+    } catch (err: any) {
       setStatus('IDLE');
-      setErrorMessage(result.error || 'Failed to join household.');
-      return;
-    }
-
-    if (result.status === 'APPROVED') {
-      setStatus('SUCCESS');
-      playJoinSuccessSound();
-      confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
-      setTimeout(() => {
-        onJoinSuccess();
-      }, 900);
-    } else {
-      setStatus('WAITING_APPROVAL');
+      setErrorMessage(err.message || 'Connection error. Please try again.');
     }
   };
 

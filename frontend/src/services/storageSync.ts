@@ -40,12 +40,25 @@ class StorageSyncService {
         this.handleRemoteEvent(event);
       });
       awsCloudDriver
-        .getHouseholdState(this.currentState.householdId)
+        .getHouseholdState(
+          this.currentState.householdId,
+          this.currentState.currentOtp,
+          this.currentState.householdName
+        )
         .then((cloudState) => {
-          if (cloudState && cloudState.notes) {
-            this.currentState = cloudState;
-            this.saveToStorage(cloudState);
-            this.notifySubscribers({ type: 'STATE_REPLACED', payload: cloudState });
+          if (cloudState) {
+            // Only adopt cloud OTP if it is still valid and not expired; otherwise preserve our fresh local OTP
+            const isCloudOtpValid = Boolean(cloudState.otpExpiresAt && Date.now() < cloudState.otpExpiresAt - 5000);
+            this.currentState = {
+              ...this.currentState,
+              ...cloudState,
+              currentOtp: isCloudOtpValid ? cloudState.currentOtp : this.currentState.currentOtp,
+              otpExpiresAt: isCloudOtpValid ? cloudState.otpExpiresAt : this.currentState.otpExpiresAt,
+              members: cloudState.members && cloudState.members.length > 0 ? cloudState.members : this.currentState.members,
+              notes: cloudState.notes && cloudState.notes.length > 0 ? cloudState.notes : this.currentState.notes,
+            };
+            this.saveToStorage(this.currentState);
+            this.notifySubscribers({ type: 'STATE_REPLACED', payload: this.currentState });
           }
         })
         .catch((e) => console.warn('Could not sync with cloud backend:', e));
@@ -74,8 +87,13 @@ class StorageSyncService {
         const parsed = JSON.parse(saved);
         if (parsed.isConfigured === undefined) {
           parsed.isConfigured = Boolean(parsed.members && parsed.members.length > 0);
-          this.saveToStorage(parsed);
         }
+        // Auto-refresh expired OTP if the household is not yet configured or if passkey has expired
+        if (!parsed.isConfigured && (!parsed.currentOtp || !parsed.otpExpiresAt || Date.now() >= parsed.otpExpiresAt - 60000)) {
+          parsed.currentOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          parsed.otpExpiresAt = Date.now() + 15 * 60 * 1000;
+        }
+        this.saveToStorage(parsed);
         return parsed;
       }
     } catch (e) {
@@ -373,13 +391,72 @@ class StorageSyncService {
     return { otpCode, otpExpiresAt };
   }
 
-  public joinHousehold(
+  public async joinHousehold(
     householdId: string,
     otpCode: string,
     displayName: string,
     color: NoteColor
-  ): { success: boolean; error?: string; member?: HouseholdMember; status?: 'APPROVED' | 'PENDING' } {
-    // Validate OTP (allow initial seed or currently active OTP)
+  ): Promise<{ success: boolean; error?: string; member?: HouseholdMember; status?: 'APPROVED' | 'PENDING' }> {
+    // If live AWS Cloud Backend is configured, join via cloud REST API
+    if (awsCloudDriver.isConfigured()) {
+      try {
+        const res = await awsCloudDriver.joinHousehold({
+          householdId: householdId || this.currentState.householdId,
+          otpCode,
+          displayName: displayName.trim(),
+          color,
+        });
+
+        const newMember: HouseholdMember = {
+          id: res.memberId,
+          householdId: res.householdId || householdId || this.currentState.householdId,
+          name: displayName.trim(),
+          color,
+          avatarHex:
+            color === 'pink' ? '#E11D48' :
+            color === 'blue' ? '#0D9488' :
+            color === 'orange' ? '#D97706' :
+            color === 'green' ? '#10B981' :
+            '#F59E0B',
+          role: res.role || 'MEMBER',
+          status: res.status || 'APPROVED',
+          isSameWifi: Boolean(res.isSameWifi),
+          joinedAt: new Date().toISOString(),
+        };
+
+        if (res.status === 'APPROVED' || res.role === 'HOST') {
+          const session: MemberSession = {
+            householdId: res.householdId || householdId,
+            memberId: res.memberId,
+            memberToken: res.memberToken,
+            displayName: newMember.name,
+            color: newMember.color,
+          };
+          this.saveSession(session);
+        }
+
+        if (res.householdId) {
+          this.currentState.householdId = res.householdId;
+        }
+        if (res.householdName) {
+          this.currentState.householdName = res.householdName;
+        }
+        if (res.role === 'HOST') {
+          this.currentState.isConfigured = true;
+        }
+        if (!this.currentState.members.some((m) => m.id === newMember.id)) {
+          this.currentState.members = [...this.currentState.members, newMember];
+        }
+
+        this.saveToStorage(this.currentState);
+        this.notifySubscribers({ type: 'MEMBER_JOIN_REQUESTED', payload: { member: newMember } });
+        return { success: true, member: newMember, status: res.status };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Failed to join household.' };
+      }
+    }
+
+    // Local validation fallback (offline or unconfigured dev mode)
     const isOtpValid =
       this.currentState.currentOtp === otpCode ||
       (this.currentState.householdId === householdId && Date.now() < this.currentState.otpExpiresAt);
@@ -483,6 +560,15 @@ class StorageSyncService {
     this.saveToStorage(this.currentState);
     this.clearSession();
     this.broadcast({ type: 'STATE_REPLACED', payload: { ...this.currentState } });
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.initHousehold({
+        householdId: this.currentState.householdId,
+        householdName: this.currentState.householdName,
+        hostSecret: this.currentState.hostSecret,
+        otpCode: this.currentState.currentOtp,
+        otpExpiresAt: this.currentState.otpExpiresAt,
+      }).catch((e) => console.warn('Cloud initHousehold failed:', e));
+    }
   }
 
   public resetToDefaults(): void {
