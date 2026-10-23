@@ -8,7 +8,7 @@
           "slots": [
             {
               "name": "item",
-              "type": "AMAZON.Food"
+              "type": "LIST_ITEM_TYPE"
             }
           ],
           "samples": [
@@ -21,26 +21,149 @@
           ]
         },
         {
-          "name": "AddNoteIntent",
+          "name": "AddToListIntent",
           "slots": [
             {
-              "name": "member",
-              "type": "AMAZON.FirstName"
+              "name": "item",
+              "type": "LIST_ITEM_TYPE"
             },
             {
-              "name": "task",
-              "type": "TASK_DESCRIPTION"
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
             }
           ],
           "samples": [
-            "remind {member} to {task}",
-            "tell {member} to {task}",
-            "pin a chore for {member} to {task}",
-            "assign {member} to {task}",
-            "pin a note to {task}",
-            "add note {task}",
-            "pin note {task}",
-            "leave a note {task}"
+            "add {item} to {listName}",
+            "add {item} to the {listName} list",
+            "add {item} to my {listName} list",
+            "put {item} on the {listName} list",
+            "put {item} on {listName}",
+            "include {item} in {listName}"
+          ]
+        },
+        {
+          "name": "CompleteItemIntent",
+          "slots": [
+            {
+              "name": "item",
+              "type": "LIST_ITEM_TYPE"
+            },
+            {
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
+            }
+          ],
+          "samples": [
+            "mark {item} as done",
+            "mark {item} done",
+            "check off {item}",
+            "cross off {item}",
+            "cross {item} off",
+            "check off {item} on {listName}",
+            "cross off {item} from {listName}",
+            "cross off {item} on the {listName} list",
+            "mark {item} done on {listName}",
+            "mark {item} completed on {listName}",
+            "we got the {item}",
+            "I bought {item}",
+            "finished {item}"
+          ]
+        },
+        {
+          "name": "UncheckItemIntent",
+          "slots": [
+            {
+              "name": "item",
+              "type": "LIST_ITEM_TYPE"
+            },
+            {
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
+            }
+          ],
+          "samples": [
+            "uncheck {item}",
+            "mark {item} as not done",
+            "uncheck {item} on {listName}",
+            "uncheck {item} from {listName}",
+            "reopen {item}"
+          ]
+        },
+        {
+          "name": "RemoveFromListIntent",
+          "slots": [
+            {
+              "name": "item",
+              "type": "LIST_ITEM_TYPE"
+            },
+            {
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
+            }
+          ],
+          "samples": [
+            "remove {item} from {listName}",
+            "remove {item} from the {listName} list",
+            "remove {item} from groceries",
+            "delete {item} from {listName}",
+            "delete {item} from groceries",
+            "delete {item} from the grocery list",
+            "take {item} off the {listName} list",
+            "take {item} off groceries"
+          ]
+        },
+        {
+          "name": "ClearCompletedIntent",
+          "slots": [
+            {
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
+            }
+          ],
+          "samples": [
+            "clear completed items",
+            "clear completed items from {listName}",
+            "clear completed groceries",
+            "clear completed",
+            "clear finished items from {listName}",
+            "clean up the grocery list",
+            "clean up {listName}",
+            "remove checked items",
+            "delete completed items"
+          ]
+        },
+        {
+          "name": "CreateListIntent",
+          "slots": [
+            {
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
+            }
+          ],
+          "samples": [
+            "create a list called {listName}",
+            "create a {listName} list",
+            "make a {listName} list",
+            "create new list {listName}",
+            "start a {listName} list",
+            "start a list called {listName}",
+            "add a new list for {listName}"
+          ]
+        },
+        {
+          "name": "DeleteListIntent",
+          "slots": [
+            {
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
+            }
+          ],
+          "samples": [
+            "delete the {listName} list",
+            "delete {listName} list",
+            "remove the {listName} list",
+            "remove list {listName}",
+            "delete list {listName}"
           ]
         },
         {
@@ -53,6 +176,187 @@
             "read my grocery list",
             "read the groceries",
             "what do we need from the store"
+          ]
+        },
+        {
+          "name": "ReadListIntent",
+          "slots": [
+            {
+              "name": "listName",
+              "type": "LIST_NAME_TYPE"
+            }
+          ],
+          "samples": [
+            "what is on my {listName} list",
+            "what's on the {listName} list",
+            "what is on {listName}",
+            "read my {listName} list",
+            "read the {listName} list",
+            "read {listName}"
+          ]
+        },
+        {
+          "name": "AddNoteIntent",
+          "slots": [
+            {
+              "name": "member",
+              "type": "AMAZON.FirstName"
+            },
+            {
+              "name": "task",
+              "type": "TASK_DESCRIPTION"
+            },
+            {
+              "name": "color",
+              "type": "NOTE_COLOR_TYPE"
+            },
+            {
+              "name": "priority",
+              "type": "PRIORITY_TYPE"
+            }
+          ],
+          "samples": [
+            "remind {member} to {task}",
+            "tell {member} to {task}",
+            "pin a chore for {member} to {task}",
+            "assign {member} to {task}",
+            "pin a {color} note {task}",
+            "pin a {color} note to {task}",
+            "pin an {priority} note {task}",
+            "pin a {priority} note {task}",
+            "pin a {color} {priority} note {task}",
+            "pin a note to {task}",
+            "add note {task}",
+            "pin note {task}",
+            "leave a note {task}"
+          ]
+        },
+        {
+          "name": "EditNoteIntent",
+          "slots": [
+            {
+              "name": "targetQuery",
+              "type": "TASK_DESCRIPTION"
+            },
+            {
+              "name": "newContent",
+              "type": "TASK_DESCRIPTION"
+            },
+            {
+              "name": "newColor",
+              "type": "NOTE_COLOR_TYPE"
+            }
+          ],
+          "samples": [
+            "edit the note about {targetQuery} to {newContent}",
+            "edit note {targetQuery} to {newContent}",
+            "change the note about {targetQuery} to {newContent}",
+            "change note {targetQuery} to {newContent}",
+            "update the note about {targetQuery} to {newContent}",
+            "update note {targetQuery} to {newContent}",
+            "change color of note {targetQuery} to {newColor}",
+            "change note {targetQuery} color to {newColor}"
+          ]
+        },
+        {
+          "name": "DeleteNoteIntent",
+          "slots": [
+            {
+              "name": "targetQuery",
+              "type": "TASK_DESCRIPTION"
+            }
+          ],
+          "samples": [
+            "delete the note about {targetQuery}",
+            "delete note {targetQuery}",
+            "remove the note about {targetQuery}",
+            "remove note {targetQuery}",
+            "delete chore {targetQuery}",
+            "remove chore {targetQuery}",
+            "delete the {targetQuery} note",
+            "remove the {targetQuery} note",
+            "clear the note about {targetQuery}"
+          ]
+        },
+        {
+          "name": "ReassignChoreIntent",
+          "slots": [
+            {
+              "name": "task",
+              "type": "TASK_DESCRIPTION"
+            },
+            {
+              "name": "member",
+              "type": "AMAZON.FirstName"
+            }
+          ],
+          "samples": [
+            "reassign chore {task} to {member}",
+            "reassign {task} to {member}",
+            "give chore {task} to {member}",
+            "assign {task} to {member}",
+            "make {member} do {task}"
+          ]
+        },
+        {
+          "name": "ReadBoardNotesIntent",
+          "slots": [
+            {
+              "name": "member",
+              "type": "AMAZON.FirstName"
+            }
+          ],
+          "samples": [
+            "what notes are on my board",
+            "what's on my pinboard",
+            "what is on my board",
+            "read my notes",
+            "what chores does {member} have",
+            "what are the chores for {member}",
+            "what are {member} chores",
+            "read chores for {member}",
+            "what tasks does {member} have"
+          ]
+        },
+        {
+          "name": "DeletePictureIntent",
+          "slots": [
+            {
+              "name": "caption",
+              "type": "PHOTO_CAPTION_TYPE"
+            }
+          ],
+          "samples": [
+            "delete the photo of {caption}",
+            "remove the photo of {caption}",
+            "delete the picture of {caption}",
+            "remove the picture of {caption}",
+            "delete photo {caption}",
+            "delete the last photo",
+            "delete the last picture",
+            "remove the last photo",
+            "remove the last picture"
+          ]
+        },
+        {
+          "name": "EditPictureCaptionIntent",
+          "slots": [
+            {
+              "name": "photoTarget",
+              "type": "PHOTO_CAPTION_TYPE"
+            },
+            {
+              "name": "newCaption",
+              "type": "PHOTO_CAPTION_TYPE"
+            }
+          ],
+          "samples": [
+            "change the caption of {photoTarget} to {newCaption}",
+            "change caption of {photoTarget} to {newCaption}",
+            "change photo caption to {newCaption}",
+            "update caption of {photoTarget} to {newCaption}",
+            "rename photo {photoTarget} to {newCaption}",
+            "edit caption of {photoTarget} to {newCaption}"
           ]
         },
         {
@@ -92,6 +396,9 @@
           ]
         },
         {
+          "name": "AMAZON.FallbackIntent"
+        },
+        {
           "name": "AMAZON.CancelIntent",
           "samples": []
         },
@@ -110,6 +417,194 @@
       ],
       "types": [
         {
+          "name": "LIST_NAME_TYPE",
+          "values": [
+            {
+              "name": {
+                "value": "groceries",
+                "synonyms": ["grocery", "grocery list", "shopping list", "supermarket", "food list"]
+              }
+            },
+            {
+              "name": {
+                "value": "chores",
+                "synonyms": ["chore list", "tasks", "to do list", "todo list"]
+              }
+            },
+            {
+              "name": {
+                "value": "packing",
+                "synonyms": ["packing list", "trip list", "vacation packing"]
+              }
+            },
+            {
+              "name": {
+                "value": "camping",
+                "synonyms": ["camping list", "camping gear"]
+              }
+            },
+            {
+              "name": {
+                "value": "hardware",
+                "synonyms": ["hardware store", "home depot", "hardware list"]
+              }
+            },
+            {
+              "name": {
+                "value": "party",
+                "synonyms": ["party list", "event list"]
+              }
+            },
+            {
+              "name": {
+                "value": "costco",
+                "synonyms": ["wholesale list", "costco list"]
+              }
+            },
+            {
+              "name": {
+                "value": "target",
+                "synonyms": ["store list", "errands"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LIST_ITEM_TYPE",
+          "values": [
+            {
+              "name": {
+                "value": "milk",
+                "synonyms": ["whole milk", "skim milk", "almond milk", "oat milk"]
+              }
+            },
+            {
+              "name": {
+                "value": "eggs",
+                "synonyms": ["brown eggs", "organic eggs", "dozen eggs"]
+              }
+            },
+            {
+              "name": {
+                "value": "bread",
+                "synonyms": ["sourdough", "loaf of bread", "whole wheat bread"]
+              }
+            },
+            {
+              "name": {
+                "value": "apples",
+                "synonyms": ["bananas", "oranges", "strawberries", "avocados"]
+              }
+            },
+            {
+              "name": {
+                "value": "coffee",
+                "synonyms": ["coffee beans", "ground coffee", "cold brew"]
+              }
+            },
+            {
+              "name": {
+                "value": "butter",
+                "synonyms": ["cheese", "cream cheese", "yogurt"]
+              }
+            },
+            {
+              "name": {
+                "value": "chicken",
+                "synonyms": ["chicken breast", "ground beef", "fish", "meat"]
+              }
+            },
+            {
+              "name": {
+                "value": "pasta",
+                "synonyms": ["spaghetti", "noodles", "rice", "cereal"]
+              }
+            },
+            {
+              "name": {
+                "value": "tent",
+                "synonyms": ["sleeping bag", "camping chair", "cooler"]
+              }
+            },
+            {
+              "name": {
+                "value": "flashlight",
+                "synonyms": ["batteries", "lantern"]
+              }
+            },
+            {
+              "name": {
+                "value": "sunscreen",
+                "synonyms": ["bug spray", "first aid kit"]
+              }
+            },
+            {
+              "name": {
+                "value": "shampoo",
+                "synonyms": ["conditioner", "soap", "body wash"]
+              }
+            },
+            {
+              "name": {
+                "value": "toothpaste",
+                "synonyms": ["toothbrush", "dental floss"]
+              }
+            },
+            {
+              "name": {
+                "value": "paper towels",
+                "synonyms": ["toilet paper", "napkins", "trash bags"]
+              }
+            },
+            {
+              "name": {
+                "value": "dish soap",
+                "synonyms": ["laundry detergent", "sponge", "cleaning spray"]
+              }
+            },
+            {
+              "name": {
+                "value": "hammer",
+                "synonyms": ["nails", "screws", "tape measure", "tools"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "NOTE_COLOR_TYPE",
+          "values": [
+            { "name": { "value": "yellow" } },
+            { "name": { "value": "pink" } },
+            { "name": { "value": "blue" } },
+            { "name": { "value": "green" } },
+            { "name": { "value": "orange" } },
+            { "name": { "value": "cream" } }
+          ]
+        },
+        {
+          "name": "PRIORITY_TYPE",
+          "values": [
+            {
+              "name": {
+                "value": "urgent",
+                "synonyms": ["high", "asap", "emergency", "important"]
+              }
+            },
+            {
+              "name": {
+                "value": "medium",
+                "synonyms": ["normal", "regular"]
+              }
+            },
+            {
+              "name": {
+                "value": "low",
+                "synonyms": ["when possible", "eventually"]
+              }
+            }
+          ]
+        },
+        {
           "name": "TASK_DESCRIPTION",
           "values": [
             { "name": { "value": "walk the dog" } },
@@ -125,7 +620,47 @@
             { "name": { "value": "pick up the dry cleaning" } },
             { "name": { "value": "vacuum the living room" } },
             { "name": { "value": "plumber coming tomorrow" } },
-            { "name": { "value": "call grandma this weekend" } }
+            { "name": { "value": "plumber arriving Friday at 8am" } },
+            { "name": { "value": "plumber" } },
+            { "name": { "value": "call grandma this weekend" } },
+            { "name": { "value": "dentist appointment" } },
+            { "name": { "value": "doctor appointment" } },
+            { "name": { "value": "soccer practice" } }
+          ]
+        },
+        {
+          "name": "PHOTO_CAPTION_TYPE",
+          "values": [
+            {
+              "name": {
+                "value": "Bear Mountain",
+                "synonyms": ["hike", "summer hike", "mountain hike"]
+              }
+            },
+            {
+              "name": {
+                "value": "Buster",
+                "synonyms": ["dog", "puppy", "Buster birthday", "dog photo"]
+              }
+            },
+            {
+              "name": {
+                "value": "family vacation",
+                "synonyms": ["beach trip", "holiday", "road trip"]
+              }
+            },
+            {
+              "name": {
+                "value": "sunset",
+                "synonyms": ["sunrise", "landscape"]
+              }
+            },
+            {
+              "name": {
+                "value": "birthday party",
+                "synonyms": ["celebration", "anniversary"]
+              }
+            }
           ]
         }
       ]

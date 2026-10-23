@@ -15,6 +15,7 @@ try {
       http: 'src/handlers/http.ts',
       websocket: 'src/handlers/websocket.ts',
       alexa: 'src/handlers/alexa.ts',
+      'services/fuzzyMatcher': 'src/services/fuzzyMatcher.ts',
     },
     outdir: 'dist',
     bundle: true,

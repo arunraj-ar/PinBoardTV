@@ -25,7 +25,7 @@ export function cleanGroceryItemText(input: string): string {
   // Strip leading prefixes: "please add", "add", "buy", "get", "we need", "put", "pick up", "pin"
   cleaned = cleaned.replace(/^(?:please\s+)?(?:add|buy|get|we\s+need|need|put|pick\s+up|pin)\s+/i, '');
   // Strip trailing destination phrases: "to groceries", "to grocery list", "to the grocery list", "on the grocery list", "to my grocery list", "on groceries", etc.
-  cleaned = cleaned.replace(/\s+(?:to|on|in|into|for)\s+(?:the\s+|my\s+|our\s+)?(?:grocery\s+list|groceries\s+list|groceries|grocery|shopping\s+list|store\s+list|board|pinboard)\s*$/i, '');
+  cleaned = cleaned.replace(/\s+(?:to|on|in|into|for)\s+(?:the\s+|my\s+|our\s+)?(?:\w+\s+)?(?:grocery\s+list|groceries\s+list|groceries|grocery|shopping\s+list|store\s+list|list|checklist|board|pinboard)\s*$/i, '');
   // Strip trailing "from the store", "from store", "at the store"
   cleaned = cleaned.replace(/\s+(?:from|at)\s+(?:the\s+)?(?:store|supermarket|market)\s*$/i, '');
   return cleaned.trim();

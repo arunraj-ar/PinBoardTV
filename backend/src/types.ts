@@ -70,4 +70,4 @@ export type SyncEvent =
   | { type: 'OTP_ROTATED'; payload: { otpCode: string; otpExpiresAt: number } }
   | { type: 'PRESENCE_UPDATED'; payload: { memberId: string; isSameWifi: boolean } }
   | { type: 'HOUSEHOLD_NAME_UPDATED'; payload: { name: string } }
-  | { type: 'WAKE_BOARD'; payload?: { action: string } };
+  | { type: 'WAKE_BOARD'; payload?: { action: string; target?: string } };

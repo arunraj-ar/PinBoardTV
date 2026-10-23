@@ -144,3 +144,65 @@ test('HTTP Handler validates POST /voice/process parameters', async () => {
   assert(parsed.error.includes('Missing text or householdId'));
 });
 
+test('cleanGroceryItemText cleans voice prefixes and trailing destinations', async () => {
+  const { cleanGroceryItemText } = await import('../dist/alexa.js');
+  assert.strictEqual(cleanGroceryItemText('please add almond milk to the grocery list'), 'almond milk');
+  assert.strictEqual(cleanGroceryItemText('buy sourdough bread and eggs from store'), 'sourdough bread and eggs');
+  assert.strictEqual(cleanGroceryItemText('put tent on the camping list'), 'tent');
+  assert.strictEqual(cleanGroceryItemText('apples to groceries'), 'apples');
+});
+
+test('Alexa Handler handles AMAZON.CancelIntent cleanly', async () => {
+  const event = {
+    version: '1.0',
+    session: {
+      new: false,
+      sessionId: 'test-session',
+      application: { applicationId: 'amzn1.ask.skill.123' },
+      user: { userId: 'amzn1.ask.account.456' },
+    },
+    request: {
+      type: 'IntentRequest',
+      requestId: 'test-req',
+      timestamp: new Date().toISOString(),
+      intent: {
+        name: 'AMAZON.CancelIntent',
+        confirmationStatus: 'NONE',
+      },
+    },
+  };
+
+  const res = await alexaHandler(event);
+  assert.strictEqual(res.version, '1.0');
+  assert.strictEqual(res.response.outputSpeech.text, 'Goodbye!');
+  assert.strictEqual(res.response.shouldEndSession, true);
+});
+
+test('Alexa Handler prompts when LinkHouseholdIntent receives incomplete PIN', async () => {
+  const event = {
+    version: '1.0',
+    session: {
+      new: false,
+      sessionId: 'test-session',
+      application: { applicationId: 'amzn1.ask.skill.123' },
+      user: { userId: 'amzn1.ask.account.456' },
+    },
+    request: {
+      type: 'IntentRequest',
+      requestId: 'test-req',
+      timestamp: new Date().toISOString(),
+      intent: {
+        name: 'LinkHouseholdIntent',
+        confirmationStatus: 'NONE',
+        slots: {
+          sixDigitPin: { name: 'sixDigitPin', value: '12' },
+        },
+      },
+    },
+  };
+
+  const res = await alexaHandler(event);
+  assert.strictEqual(res.response.shouldEndSession, false);
+  assert(res.response.outputSpeech.text.includes('Please tell me the 6-digit code'));
+});
+
