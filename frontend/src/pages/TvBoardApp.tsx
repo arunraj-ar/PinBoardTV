@@ -15,7 +15,6 @@ import {
   ChevronDown,
   ChevronRight,
   Check,
-  EyeOff,
   Home,
   Edit3,
   Trash2,
@@ -79,6 +78,17 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
     return () => clearInterval(timer);
   }, []);
 
+  // Voice Status Toast Auto-Dismiss
+  useEffect(() => {
+    if (!isListening && (voiceStatusText || voiceTranscript)) {
+      const timer = setTimeout(() => {
+        setVoiceStatusText('');
+        setVoiceTranscript('');
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [isListening, voiceStatusText, voiceTranscript]);
+
   // Sync subscription
   useEffect(() => {
     const unsubscribe = storageSync.subscribe((newState) => {
@@ -99,9 +109,10 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
   // <= 8 items on a single page: 4 cols x 2 rows (spacious)
   // 9 to 15 items per page: 5 cols x 3 rows (compact 10-foot legible)
   // 15+ items: Horizontal sliding multi-page carousel with seamless D-pad boundaries
-  const pages = organizeNotesIntoPages(state.notes, 15);
+  const uniqueNotes = Array.from(new Map(state.notes.map((n) => [n.id, n])).values());
+  const pages = organizeNotesIntoPages(uniqueNotes, 15);
   const totalPages = Math.max(1, pages.length);
-  const cols = totalPages > 1 || state.notes.length > 8 ? 5 : 4;
+  const cols = totalPages > 1 || uniqueNotes.length > 8 ? 5 : 4;
   const isCompact = cols === 5;
   const currentNotes = pages[currentPage] || [];
 
@@ -114,11 +125,11 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
 
   // If notes become empty, shift focus to header settings/voice
   useEffect(() => {
-    if (state.notes.length === 0 && focusArea === 'board') {
+    if (uniqueNotes.length === 0 && focusArea === 'board') {
       setFocusArea('header');
       setHeaderFocusIndex(1); // focus on Settings
     }
-  }, [state.notes.length, focusArea]);
+  }, [uniqueNotes.length, focusArea]);
 
   // Idle Screensaver Inactivity Timeout (30 seconds)
   useEffect(() => {
@@ -836,17 +847,27 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
         </div>
       </header>
 
-      {/* Voice Status Toast */}
+      {/* Voice Status Toast with Auto-Dismiss & Close */}
       {(voiceStatusText || voiceTranscript) && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-purple-950/95 border-2 border-purple-400 text-purple-100 px-8 py-3 rounded-full text-base font-black shadow-2xl flex items-center gap-3">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-purple-950/95 border-2 border-purple-400 text-purple-100 px-6 py-2.5 rounded-full text-base font-black shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200">
           <Sparkles className="w-5 h-5 text-purple-300 animate-spin" />
           <span>{voiceStatusText || `"${voiceTranscript}"`}</span>
+          <button
+            onClick={() => {
+              setVoiceStatusText('');
+              setVoiceTranscript('');
+            }}
+            className="ml-2 text-purple-300 hover:text-white cursor-pointer p-0.5 rounded-full hover:bg-purple-800/50"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
       {/* 16:9 Full Widescreen Canvas: Horizontal Slide Carousel (15 items per page) */}
       <main className="flex-1 pb-4 pt-2 px-2 flex flex-col justify-center w-full overflow-hidden relative">
-        {state.notes.length === 0 ? (
+        {uniqueNotes.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center p-10 max-w-2xl mx-auto bg-stone-900/80 backdrop-blur-md rounded-3xl border border-white/15 shadow-2xl space-y-6">
             <div className="w-20 h-20 rounded-full bg-amber-400/20 border-2 border-amber-400/50 flex items-center justify-center text-amber-300 shadow-[0_0_30px_rgba(251,191,36,0.3)]">
               <Sparkles className="w-10 h-10 animate-pulse" />
@@ -1192,39 +1213,20 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center animate-in fade-in zoom-in-95 duration-200">
-                <div className="max-w-2xl flex flex-col items-center">
-                  <div className="inline-flex items-center space-x-2 bg-amber-400/20 text-amber-300 border border-amber-400/40 px-5 py-2 rounded-full text-base font-black uppercase tracking-wider mb-6">
-                    <Sparkles className="w-5 h-5 text-amber-300" />
-                    <span>Instant Mobile Companion Pairing</span>
-                  </div>
-
-                  <h2 className="text-5xl font-black text-white tracking-tight leading-tight mb-2">
-                    Scan with Phone Camera
+                <div className="max-w-xl flex flex-col items-center">
+                  <h2 className="text-4xl font-black text-white tracking-tight mb-8">
+                    Scan to Connect Phone
                   </h2>
-                  <p className="text-xl text-stone-300 font-medium mb-8">
-                    Point any smartphone camera at the screen • Zero typing required
-                  </p>
 
                   {/* Giant QR Code Container */}
                   <div className="bg-white p-6 rounded-3xl shadow-[0_0_80px_rgba(245,158,11,0.35)] border-4 border-amber-400 mb-6">
-                    <QRCodeSVG value={magicQrUrl} size={360} level="M" />
+                    <QRCodeSVG value={magicQrUrl} size={340} level="M" />
                   </div>
 
                   {/* Large Passkey Display */}
-                  <div className="text-6xl font-mono font-black text-amber-400 tracking-widest drop-shadow-md mb-2">
+                  <div className="text-6xl font-mono font-black text-amber-400 tracking-widest drop-shadow-md">
                     {state.currentOtp.slice(0, 3)} - {state.currentOtp.slice(3)}
                   </div>
-                  <p className="text-sm text-stone-400 font-bold mb-4">
-                    Passkey rotates automatically every 15 minutes for household security
-                  </p>
-
-                  <button
-                    onClick={() => setIsQrRevealed(false)}
-                    className="text-xs text-stone-400 hover:text-stone-200 flex items-center gap-1.5 cursor-pointer underline underline-offset-4"
-                  >
-                    <EyeOff className="w-3.5 h-3.5" />
-                    <span>Hide QR Code</span>
-                  </button>
                 </div>
               </div>
             )}
@@ -1444,15 +1446,6 @@ export const TvBoardApp: React.FC<TvBoardAppProps> = ({ onBackToScreensaver }) =
                           >
                             {state.members.length}
                           </span>
-                        </div>
-                        <div
-                          className={`text-xs ${
-                            currentFocusItem?.type === 'members_header'
-                              ? 'text-stone-900 font-bold'
-                              : 'text-stone-400'
-                          }`}
-                        >
-                          {isMembersExpanded ? 'Click to collapse' : 'Click to expand & manage'}
                         </div>
                       </div>
                     </div>

@@ -77,6 +77,16 @@ export class AwsCloudDriver {
     if (!res.ok) throw new Error(`Failed to update household name: ${res.statusText}`);
   }
 
+  public async removeMember(householdId: string, memberId: string): Promise<void> {
+    const res = await fetch(
+      `${this.apiUrl}/household/members/${encodeURIComponent(memberId)}?householdId=${encodeURIComponent(householdId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!res.ok) throw new Error(`Failed to remove member: ${res.statusText}`);
+  }
+
   public async getHouseholdState(householdId: string, otpCode?: string, name?: string): Promise<HouseholdState | null> {
     const query = new URLSearchParams({ householdId });
     if (otpCode) query.set('otp', otpCode);

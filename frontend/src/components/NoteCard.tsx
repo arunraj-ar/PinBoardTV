@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, Circle } from 'lucide-react';
 import type { PinNote } from '../types/pinboard';
+import { PinGraphic } from './PinGraphic';
 
 export interface NoteCardProps {
   note: PinNote;
@@ -51,12 +52,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             className="w-full h-full object-cover"
             loading="lazy"
           />
-          {/* Pushpin at top */}
-          <div
-            className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-red-600 shadow-md border-2 border-white ${
-              isSpacious ? 'top-2 w-5 h-5' : 'top-1.5 w-4 h-4'
-            }`}
-          />
+          {/* Pushpin / Magnet at top */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-1.5 z-10">
+            <PinGraphic magnet={note.magnet || 'red-dot'} size={isSpacious ? 'md' : 'sm'} />
+          </div>
         </div>
         <p
           className={`font-handwriting text-stone-800 text-center leading-tight px-1 line-clamp-2 ${
@@ -79,15 +78,6 @@ export const NoteCard: React.FC<NoteCardProps> = ({
       : note.color === 'green'
       ? 'bg-lime-100 text-lime-950 border-lime-300'
       : 'bg-orange-100 text-orange-950 border-orange-300';
-
-  const magnetColor =
-    note.magnet === 'blue-star'
-      ? 'bg-blue-600 border-blue-800 ring-blue-300'
-      : note.magnet === 'brass-pin'
-      ? 'bg-amber-600 border-amber-800 ring-amber-300'
-      : note.magnet === 'washi-tape'
-      ? 'bg-emerald-600 border-emerald-800 ring-emerald-300'
-      : 'bg-red-600 border-red-800 ring-red-300';
 
   // Sizing rule: Spacious mode (<=8 notes) shows up to 5 items; Compact mode (9-15 notes) shows up to 3 items
   const items = note.items || [];
@@ -113,12 +103,8 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     >
       <div>
         {/* Magnet / Pushpin Graphic */}
-        <div className={`flex justify-center ${isSpacious ? '-mt-3 mb-2.5' : '-mt-2 mb-1.5'}`}>
-          <div
-            className={`rounded-full shadow-md border ring-2 ${magnetColor} ${
-              isSpacious ? 'w-5 h-5' : 'w-3.5 h-3.5'
-            }`}
-          />
+        <div className={`flex justify-center ${isSpacious ? '-mt-3.5 mb-2' : '-mt-2.5 mb-1'}`}>
+          <PinGraphic magnet={note.magnet || 'red-dot'} size={isSpacious ? 'md' : 'sm'} />
         </div>
 
         {/* Note Title */}

@@ -20,6 +20,15 @@ import { playJoinSuccessSound, playPinPopSound } from './services/soundEffects';
 
 type AppRoute = 'tv_screensaver' | 'tv_board' | 'mobile_join' | 'mobile_app';
 
+const isMobileDevice = () => {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i;
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isSmallScreen = window.innerWidth <= 768;
+  return mobileRegex.test(ua) || (hasTouch && isSmallScreen);
+};
+
 export function App() {
   const [route, setRoute] = useState<AppRoute>('tv_board');
   const [householdState, setHouseholdState] = useState(storageSync.getState());
@@ -38,7 +47,7 @@ export function App() {
     return () => unsubscribe();
   }, []);
 
-  // Initialize route based on URL path
+  // Initialize route based on URL path and device type
   useEffect(() => {
     const handleLocationChange = () => {
       const path = window.location.pathname;
@@ -47,9 +56,23 @@ export function App() {
       const currentSession = storageSync.getSession();
       setSession(currentSession);
 
-      if (activePath === '/tv/screensaver') {
+      const isMobile = isMobileDevice();
+
+      if (activePath === '/') {
+        if (isMobile) {
+          if (!currentSession) {
+            setRoute('mobile_join');
+            window.history.replaceState({}, '', '/join');
+          } else {
+            setRoute('mobile_app');
+            window.history.replaceState({}, '', '/mobile');
+          }
+        } else {
+          setRoute('tv_board');
+        }
+      } else if (activePath === '/tv/screensaver') {
         setRoute('tv_screensaver');
-      } else if (activePath === '/tv' || activePath.startsWith('/tv/board') || activePath === '/') {
+      } else if (activePath === '/tv' || activePath.startsWith('/tv/board')) {
         setRoute('tv_board');
       } else if (activePath === '/mobile' || activePath.startsWith('/mobile/app')) {
         if (!currentSession) {
@@ -58,9 +81,14 @@ export function App() {
           setRoute('mobile_app');
         }
       } else if (activePath === '/join') {
-        setRoute('mobile_join');
+        if (currentSession && isMobile) {
+          setRoute('mobile_app');
+          window.history.replaceState({}, '', '/mobile');
+        } else {
+          setRoute('mobile_join');
+        }
       } else {
-        setRoute('tv_board');
+        setRoute(isMobile ? (currentSession ? 'mobile_app' : 'mobile_join') : 'tv_board');
       }
     };
 

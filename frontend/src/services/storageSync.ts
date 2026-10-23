@@ -47,15 +47,22 @@ class StorageSyncService {
         )
         .then((cloudState) => {
           if (cloudState) {
-            // Only adopt cloud OTP if it is still valid and not expired; otherwise preserve our fresh local OTP
+            const cleanMembers = cloudState.members && cloudState.members.length > 0
+              ? Array.from(new Map(cloudState.members.map((m) => [m.id, m])).values())
+              : this.currentState.members;
+            const cleanNotes = cloudState.notes && cloudState.notes.length > 0
+              ? Array.from(new Map(cloudState.notes.map((n) => [n.id, n])).values())
+              : this.currentState.notes;
+
             const isCloudOtpValid = Boolean(cloudState.otpExpiresAt && Date.now() < cloudState.otpExpiresAt - 5000);
+
             this.currentState = {
               ...this.currentState,
               ...cloudState,
               currentOtp: isCloudOtpValid ? cloudState.currentOtp : this.currentState.currentOtp,
               otpExpiresAt: isCloudOtpValid ? cloudState.otpExpiresAt : this.currentState.otpExpiresAt,
-              members: cloudState.members && cloudState.members.length > 0 ? cloudState.members : this.currentState.members,
-              notes: cloudState.notes && cloudState.notes.length > 0 ? cloudState.notes : this.currentState.notes,
+              members: cleanMembers,
+              notes: cleanNotes,
             };
             this.saveToStorage(this.currentState);
             this.notifySubscribers({ type: 'STATE_REPLACED', payload: this.currentState });
@@ -130,9 +137,17 @@ class StorageSyncService {
       case 'STATE_REPLACED':
         this.currentState = event.payload;
         break;
-      case 'NOTE_CREATED':
-        this.currentState.notes = [event.payload, ...this.currentState.notes];
+      case 'NOTE_CREATED': {
+        const note = event.payload;
+        if (!this.currentState.notes.some((n) => n.id === note.id)) {
+          this.currentState.notes = [note, ...this.currentState.notes];
+        } else {
+          this.currentState.notes = this.currentState.notes.map((n) =>
+            n.id === note.id ? { ...n, ...note } : n
+          );
+        }
         break;
+      }
       case 'NOTE_UPDATED':
         this.currentState.notes = this.currentState.notes.map((n) =>
           n.id === event.payload.id ? { ...n, ...event.payload.changes } : n
@@ -141,9 +156,17 @@ class StorageSyncService {
       case 'NOTE_DELETED':
         this.currentState.notes = this.currentState.notes.filter((n) => n.id !== event.payload.id);
         break;
-      case 'MEMBER_JOIN_REQUESTED':
-        this.currentState.members = [...this.currentState.members, event.payload.member];
+      case 'MEMBER_JOIN_REQUESTED': {
+        const member = event.payload.member;
+        if (!this.currentState.members.some((m) => m.id === member.id)) {
+          this.currentState.members = [...this.currentState.members, member];
+        } else {
+          this.currentState.members = this.currentState.members.map((m) =>
+            m.id === member.id ? { ...m, ...member } : m
+          );
+        }
         break;
+      }
       case 'MEMBER_APPROVED':
         this.currentState.members = this.currentState.members.map((m) =>
           m.id === event.payload.memberId ? { ...m, status: 'APPROVED' } : m
@@ -301,7 +324,9 @@ class StorageSyncService {
       updatedAt: new Date().toISOString(),
     };
 
-    this.currentState.notes = [newNote, ...this.currentState.notes];
+    if (!this.currentState.notes.some((n) => n.id === newNote.id)) {
+      this.currentState.notes = [newNote, ...this.currentState.notes];
+    }
     this.broadcast({ type: 'NOTE_CREATED', payload: newNote });
 
     if (awsCloudDriver.isConfigured()) {
@@ -431,6 +456,7 @@ class StorageSyncService {
             memberToken: res.memberToken,
             displayName: newMember.name,
             color: newMember.color,
+            role: (res.role || 'MEMBER') as MemberRole,
           };
           this.saveSession(session);
         }
@@ -465,7 +491,8 @@ class StorageSyncService {
       return { success: false, error: 'Invalid or expired 6-digit passkey. Please check the TV screen.' };
     }
 
-    const isFirstMember = this.currentState.members.length === 0 || !this.currentState.isConfigured;
+    const hasHost = this.currentState.members.some((m) => m.role === 'HOST');
+    const isFirstMember = this.currentState.members.length === 0 || !this.currentState.isConfigured || !hasHost;
     const role: MemberRole = isFirstMember ? 'HOST' : 'MEMBER';
     const status: MemberStatus = isFirstMember ? 'APPROVED' : (this.currentState.autoApprove ? 'APPROVED' : 'PENDING');
 
@@ -500,6 +527,7 @@ class StorageSyncService {
         memberToken: `tok_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
         displayName: newMember.name,
         color: newMember.color,
+        role: newMember.role,
       };
       this.saveSession(session);
     }
@@ -517,7 +545,12 @@ class StorageSyncService {
 
   public removeMember(memberId: string): void {
     this.currentState.members = this.currentState.members.filter((m) => m.id !== memberId);
+    this.saveToStorage(this.currentState);
     this.broadcast({ type: 'MEMBER_REMOVED', payload: { memberId } });
+
+    if (awsCloudDriver.isConfigured()) {
+      awsCloudDriver.removeMember(this.currentState.householdId, memberId).catch((e) => console.warn('Cloud removeMember failed:', e));
+    }
   }
 
   public toggleAutoApprove(): boolean {

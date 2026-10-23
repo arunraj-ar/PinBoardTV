@@ -68,6 +68,7 @@ export interface MemberSession {
   memberToken: string;
   displayName: string;
   color: NoteColor;
+  role?: MemberRole;
 }
 
 export type SyncEvent =

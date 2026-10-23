@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-  Sparkles,
   Mic,
   Edit3,
   ShieldCheck,
-  Smartphone,
   CheckCircle,
   Tv,
   ArrowRight,
@@ -212,51 +210,17 @@ export const TvInitialSetup: React.FC<TvInitialSetupProps> = ({ onSetupComplete 
       </header>
 
       {/* Main Center Stage: Giant QR Code Landing Page */}
-      <div className="relative z-10 flex-1 flex flex-row items-center justify-center gap-16 py-6">
-        {/* Left Side: Step Instructions */}
-        <div className="flex-1 max-w-xl space-y-6">
-          <div className="inline-flex items-center space-x-2 bg-amber-400/20 text-amber-300 border border-amber-400/40 px-4 py-1.5 rounded-full text-sm font-black uppercase tracking-wider">
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Zero Typing Setup</span>
-          </div>
-
+      <div className="relative z-10 flex-1 flex flex-row items-center justify-center gap-20 py-8">
+        {/* Left Side: Clean Title */}
+        <div className="flex-1 max-w-lg space-y-4">
           <h2 className="text-5xl font-black text-white tracking-tight leading-tight">
             Scan to Create Your Household
           </h2>
 
           <p className="text-xl text-stone-300 leading-relaxed font-medium">
-            Scan the QR code with your phone camera. You will automatically become the{' '}
-            <span className="text-amber-400 font-bold">Household Admin</span> with full control over notes, lists, and members.
+            Scan the QR code with your phone to activate the pinboard and become the{' '}
+            <span className="text-amber-400 font-bold">Household Admin</span>.
           </p>
-
-          <div className="space-y-4 pt-2">
-            <div className="flex items-center space-x-4 bg-stone-900/80 border border-white/10 p-4 rounded-2xl">
-              <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center font-black">
-                1
-              </div>
-              <div className="text-base text-stone-200">
-                Open camera app on your iPhone or Android
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4 bg-stone-900/80 border border-white/10 p-4 rounded-2xl">
-              <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center font-black">
-                2
-              </div>
-              <div className="text-base text-stone-200">
-                Point at the QR code and tap the link
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4 bg-stone-900/80 border border-white/10 p-4 rounded-2xl">
-              <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center font-black">
-                3
-              </div>
-              <div className="text-base text-stone-200">
-                Enter your name to activate the TV PinBoard
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Right Side: Giant QR Code Card */}
@@ -271,9 +235,6 @@ export const TvInitialSetup: React.FC<TvInitialSetupProps> = ({ onSetupComplete 
 
           {/* Passkey Display */}
           <div className="mt-5 text-center">
-            <span className="text-xs font-bold text-stone-400 uppercase tracking-widest block mb-1">
-              Manual 6-Digit Passkey
-            </span>
             <div className="text-5xl font-mono font-black text-amber-400 tracking-widest drop-shadow-md">
               {state.currentOtp.slice(0, 3)} - {state.currentOtp.slice(3)}
             </div>
@@ -296,11 +257,6 @@ export const TvInitialSetup: React.FC<TvInitialSetupProps> = ({ onSetupComplete 
             <span className="bg-purple-900 text-purple-200 px-2 py-0.5 rounded text-xs font-mono font-bold">V</span>
             Voice Input
           </span>
-        </div>
-
-        <div className="flex items-center space-x-2 text-stone-300">
-          <Smartphone className="w-4 h-4 text-amber-400" />
-          <span>Works on all phone browsers • Same Wi-Fi auto-verified</span>
         </div>
       </footer>
 

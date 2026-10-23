@@ -12,11 +12,18 @@ import {
   Plus,
   X,
   AlertTriangle,
+  ShieldCheck,
+  UserX,
+  UserCheck,
+  RefreshCw,
+  Copy,
+  Check,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { storageSync } from '../services/storageSync';
 import type {
   HouseholdState,
+  HouseholdMember,
   MemberSession,
   NoteColor,
   MagnetStyle,
@@ -24,6 +31,7 @@ import type {
   ChecklistItem,
 } from '../types/pinboard';
 import { playPinPopSound, playCheckmarkSound } from '../services/soundEffects';
+import { PinGraphic } from '../components/PinGraphic';
 
 interface MobileAppProps {
   onLogout: () => void;
@@ -40,11 +48,11 @@ const AVAILABLE_COLORS: { id: NoteColor; label: string; bgClass: string; textCla
   { id: 'cream', label: 'Cream', bgClass: 'bg-stone-200', textClass: 'text-stone-900', borderClass: 'border-stone-400' },
 ];
 
-const AVAILABLE_MAGNETS: { id: MagnetStyle; label: string; icon: string }[] = [
-  { id: 'brass-pin', label: 'Brass Pin', icon: '📌' },
-  { id: 'red-dot', label: 'Red Magnet', icon: '🔴' },
-  { id: 'blue-star', label: 'Blue Star', icon: '⭐' },
-  { id: 'washi-tape', label: 'Washi Tape', icon: '🏷️' },
+const AVAILABLE_MAGNETS: { id: MagnetStyle; label: string }[] = [
+  { id: 'brass-pin', label: 'Brass Pin' },
+  { id: 'red-dot', label: 'Red Magnet' },
+  { id: 'blue-star', label: 'Blue Star' },
+  { id: 'washi-tape', label: 'Washi Tape' },
 ];
 
 export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
@@ -58,12 +66,14 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
   const [newGroceryTitle, setNewGroceryTitle] = useState<string>('');
   const [groceryInput, setGroceryInput] = useState<string>('');
   const [groceryColor, setGroceryColor] = useState<NoteColor>('green');
+  const [groceryMagnet, setGroceryMagnet] = useState<MagnetStyle>('red-dot');
 
   const [choreTitle, setChoreTitle] = useState<string>('');
   const [choreAssignee, setChoreAssignee] = useState<string>('');
   const [chorePriority, setChorePriority] = useState<'LOW' | 'MED' | 'HIGH'>('MED');
   const [choreSubtasks, setChoreSubtasks] = useState<string>('');
   const [choreColor, setChoreColor] = useState<NoteColor>('orange');
+  const [choreMagnet, setChoreMagnet] = useState<MagnetStyle>('red-dot');
 
   const [stickyTitle, setStickyTitle] = useState<string>('');
   const [stickyContent, setStickyContent] = useState<string>('');
@@ -73,6 +83,12 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
   const [polaroidCaption, setPolaroidCaption] = useState<string>('');
   const [polaroidImage, setPolaroidImage] = useState<string | null>(null);
   const [polaroidMagnet, setPolaroidMagnet] = useState<MagnetStyle>('blue-star');
+
+  // Admin Management states
+  const [showAdminSheet, setShowAdminSheet] = useState<boolean>(false);
+  const [memberToRemove, setMemberToRemove] = useState<HouseholdMember | null>(null);
+  const [newHouseholdName, setNewHouseholdName] = useState<string>('');
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   // Edit Note states
   const [editingNote, setEditingNote] = useState<PinNote | null>(null);
@@ -198,7 +214,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
         type: 'GROCERY',
         title: newGroceryTitle.trim() || '🛒 Grocery List',
         color: groceryColor,
-        magnet: 'red-dot',
+        magnet: groceryMagnet,
         rotationDeg: Math.random() * 4 - 2,
         createdByMemberId: session?.memberId || 'mobile',
         pinned: true,
@@ -238,7 +254,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
       type: 'CHORE',
       title: choreTitle.trim().startsWith('⚡') ? choreTitle.trim() : `⚡ ${choreTitle.trim()}`,
       color: choreColor,
-      magnet: 'red-dot',
+      magnet: choreMagnet,
       rotationDeg: Math.random() * 4 - 2,
       assignedToMemberId: choreAssignee || state.members[0]?.id,
       assignedToName: assignee?.name || state.members[0]?.name || 'Family',
@@ -419,7 +435,13 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
     setIsEditDirty(true);
   };
 
-  const groceryNotes = state.notes.filter((n) => n.type === 'GROCERY');
+  const uniqueNotes = Array.from(new Map(state.notes.map((n) => [n.id, n])).values());
+  const groceryNotes = uniqueNotes.filter((n) => n.type === 'GROCERY');
+
+  const isUserAdmin =
+    session?.role === 'HOST' ||
+    state.members.find((m) => m.id === session?.memberId)?.role === 'HOST' ||
+    (state.members.length > 0 && state.members[0].id === session?.memberId);
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col max-w-md mx-auto relative pb-24">
@@ -430,24 +452,48 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
             {session?.displayName?.charAt(0) || '👤'}
           </div>
           <div>
-            <h2 className="text-base font-bold text-white leading-tight">
-              {session?.displayName || 'Family Companion'}
-            </h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-base font-bold text-white leading-tight">
+                {session?.displayName || 'Family Companion'}
+              </h2>
+              {isUserAdmin && (
+                <span className="text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/30 px-1.5 py-0.2 rounded-full">
+                  Admin
+                </span>
+              )}
+            </div>
             <span className="text-xs text-stone-400">{state.householdName}</span>
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            storageSync.clearSession();
-            onLogout();
-          }}
-          className="text-stone-400 hover:text-white p-2 rounded-lg bg-stone-800/80 text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-          title="Sign out of household"
-        >
-          <LogOut className="w-4 h-4" />
-          <span>Exit</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {isUserAdmin && (
+            <button
+              onClick={() => {
+                playPinPopSound();
+                setNewHouseholdName(state.householdName);
+                setShowAdminSheet(true);
+              }}
+              className="text-amber-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              title="Manage Family & Household"
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <span>Admin</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              storageSync.clearSession();
+              onLogout();
+            }}
+            className="text-stone-400 hover:text-white p-2 rounded-lg bg-stone-800/80 text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Sign out of household"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Exit</span>
+          </button>
+        </div>
       </header>
 
       {/* Wi-Fi Verification Banner */}
@@ -524,7 +570,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
       <div className="px-4 flex-1">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-extrabold uppercase tracking-wider text-stone-400">
-            Currently on TV Board ({state.notes.length})
+            Currently on TV Board ({uniqueNotes.length})
           </h3>
           <span className="text-xs text-amber-400 font-bold flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
@@ -533,14 +579,14 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
         </div>
 
         <div className="space-y-3">
-          {state.notes.length === 0 ? (
+          {uniqueNotes.length === 0 ? (
             <div className="p-8 text-center bg-stone-900/60 border border-white/5 rounded-2xl text-stone-400">
               <span className="text-3xl block mb-2">📌</span>
               <p className="text-sm font-bold text-stone-300">No notes on the board yet</p>
               <p className="text-xs text-stone-500 mt-1">Tap any option above to pin something to the TV!</p>
             </div>
           ) : (
-            state.notes.map((note) => {
+            uniqueNotes.map((note) => {
               const itemsCount = note.items?.length || 0;
               const doneCount = note.items?.filter((i) => i.done).length || 0;
 
@@ -729,6 +775,30 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
                         ))}
                       </div>
                     </div>
+                    <div>
+                      <label className="block text-xs font-bold text-stone-400 uppercase mb-1">
+                        Pin / Magnet Style
+                      </label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {AVAILABLE_MAGNETS.map((mag) => (
+                          <button
+                            type="button"
+                            key={mag.id}
+                            onClick={() => setGroceryMagnet(mag.id)}
+                            className={`py-2 px-1 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center ${
+                              groceryMagnet === mag.id
+                                ? 'bg-amber-400/20 border-amber-400 text-white font-bold'
+                                : 'bg-stone-950 border-white/10 text-stone-400 hover:text-white'
+                            }`}
+                          >
+                            <div className="h-6 flex items-center justify-center mb-1">
+                              <PinGraphic magnet={mag.id} size="sm" />
+                            </div>
+                            <span className="text-[10px] truncate max-w-full font-medium">{mag.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </>
                 )}
 
@@ -843,6 +913,31 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-stone-400 uppercase mb-1">
+                    Pin / Magnet Style
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {AVAILABLE_MAGNETS.map((mag) => (
+                      <button
+                        type="button"
+                        key={mag.id}
+                        onClick={() => setChoreMagnet(mag.id)}
+                        className={`py-2 px-1 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center ${
+                          choreMagnet === mag.id
+                            ? 'bg-amber-400/20 border-amber-400 text-white font-bold'
+                            : 'bg-stone-950 border-white/10 text-stone-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="h-6 flex items-center justify-center mb-1">
+                          <PinGraphic magnet={mag.id} size="sm" />
+                        </div>
+                        <span className="text-[10px] truncate max-w-full font-medium">{mag.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   className="w-full bg-orange-500 hover:bg-orange-400 text-white py-3.5 rounded-xl font-black text-base shadow-lg transition-colors cursor-pointer"
@@ -917,8 +1012,10 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
                             : 'bg-stone-950 border-white/10 text-stone-400 hover:text-white'
                         }`}
                       >
-                        <span className="text-base mb-0.5">{mag.icon}</span>
-                        <span className="text-[10px] truncate max-w-full">{mag.label}</span>
+                        <div className="h-6 flex items-center justify-center mb-1">
+                          <PinGraphic magnet={mag.id} size="sm" />
+                        </div>
+                        <span className="text-[10px] truncate max-w-full font-medium">{mag.label}</span>
                       </button>
                     ))}
                   </div>
@@ -1007,8 +1104,10 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
                             : 'bg-stone-950 border-white/10 text-stone-400 hover:text-white'
                         }`}
                       >
-                        <span className="text-base mb-0.5">{mag.icon}</span>
-                        <span className="text-[10px] truncate max-w-full">{mag.label}</span>
+                        <div className="h-6 flex items-center justify-center mb-1">
+                          <PinGraphic magnet={mag.id} size="sm" />
+                        </div>
+                        <span className="text-[10px] truncate max-w-full font-medium">{mag.label}</span>
                       </button>
                     ))}
                   </div>
@@ -1308,8 +1407,10 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
                           : 'bg-stone-950 border-white/10 text-stone-400 hover:text-white'
                       }`}
                     >
-                      <span className="text-base mb-0.5">{mag.icon}</span>
-                      <span className="text-[10px] truncate max-w-full">{mag.label}</span>
+                      <div className="h-6 flex items-center justify-center mb-1">
+                        <PinGraphic magnet={mag.id} size="sm" />
+                      </div>
+                      <span className="text-[10px] truncate max-w-full font-medium">{mag.label}</span>
                     </button>
                   ))}
                 </div>
@@ -1419,6 +1520,249 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onLogout }) => {
                 className="py-3 px-4 rounded-xl font-black text-sm bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-900/40 transition-colors cursor-pointer"
               >
                 Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------- ADMIN HOUSEHOLD & MEMBER MANAGEMENT SHEET ------------------- */}
+      {showAdminSheet && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setShowAdminSheet(false)}
+        >
+          <div
+            className="bg-stone-900 border-t sm:border border-white/15 rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl flex flex-col space-y-6 animate-in slide-in-from-bottom-6 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Sheet Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/40 text-amber-400 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">Household Admin</h3>
+                  <p className="text-xs text-stone-400">Manage family members & permissions</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminSheet(false)}
+                className="text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Section 1: Active TV Passkey & Invite Link */}
+            <div className="p-4 bg-stone-950/70 border border-white/10 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">Active TV Passkey</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playPinPopSound();
+                    storageSync.rotateOtp();
+                  }}
+                  className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Rotate</span>
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-mono font-black text-amber-400 tracking-wider">
+                  {state.currentOtp.slice(0, 3)} - {state.currentOtp.slice(3)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const joinUrl = `${window.location.origin}/join?code=${state.currentOtp}&h=${state.householdId}`;
+                    navigator.clipboard.writeText(joinUrl);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-xs font-bold text-stone-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedLink ? 'Copied!' : 'Copy Invite Link'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Section 2: Family Members List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider">
+                  Family Members ({state.members.length})
+                </h4>
+              </div>
+
+              <div className="space-y-2">
+                {state.members.map((member) => {
+                  const isHost = member.role === 'HOST';
+                  const isPending = member.status === 'PENDING';
+                  const isSelf = member.id === session?.memberId;
+
+                  return (
+                    <div
+                      key={member.id}
+                      className="p-3 bg-stone-950/70 border border-white/5 rounded-xl flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0 shadow-sm"
+                          style={{ backgroundColor: member.avatarHex || '#F59E0B' }}
+                        >
+                          {member.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0 truncate">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-bold text-sm text-white truncate">{member.name}</span>
+                            {isHost && (
+                              <span className="text-[10px] bg-amber-400/20 text-amber-300 font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                                Host
+                              </span>
+                            )}
+                            {isSelf && (
+                              <span className="text-[10px] bg-stone-800 text-stone-400 font-medium px-1.5 py-0.5 rounded-full shrink-0">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          {isPending ? (
+                            <span className="text-[11px] text-amber-400 font-semibold block">Pending Approval</span>
+                          ) : (
+                            <span className="text-[11px] text-stone-400 block">{member.isSameWifi ? 'Local Wi-Fi' : 'Approved'}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isPending && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playPinPopSound();
+                              storageSync.approveMember(member.id);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Approve</span>
+                          </button>
+                        )}
+
+                        {!isHost && !isSelf && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playPinPopSound();
+                              setMemberToRemove(member);
+                            }}
+                            className="p-2 rounded-lg bg-stone-800 hover:bg-rose-950/80 hover:text-rose-400 text-stone-400 transition-colors cursor-pointer"
+                            title={`Remove ${member.name}`}
+                          >
+                            <UserX className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section 3: Household Settings */}
+            <div className="space-y-4 pt-2 border-t border-white/10">
+              <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider">Settings</h4>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-300 mb-1.5">Household Name</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newHouseholdName}
+                    onChange={(e) => setNewHouseholdName(e.target.value)}
+                    className="flex-1 bg-stone-950 border border-white/15 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
+                    placeholder="Household Name"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newHouseholdName.trim()) {
+                        playPinPopSound();
+                        storageSync.setHouseholdName(newHouseholdName.trim());
+                      }
+                    }}
+                    disabled={!newHouseholdName.trim() || newHouseholdName.trim() === state.householdName}
+                    className="px-4 py-2 bg-amber-400 hover:bg-amber-300 disabled:opacity-40 disabled:hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 bg-stone-950/70 border border-white/5 rounded-xl">
+                <div>
+                  <span className="text-sm font-bold text-white block">Auto-Approve Joiners</span>
+                  <span className="text-xs text-stone-400 block">Allow valid TV passkey to join without waiting</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playPinPopSound();
+                    storageSync.toggleAutoApprove();
+                  }}
+                  className={`w-12 h-7 rounded-full p-1 transition-colors cursor-pointer flex items-center ${
+                    state.autoApprove ? 'bg-amber-400 justify-end' : 'bg-stone-800 justify-start'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full shadow-md ${state.autoApprove ? 'bg-stone-950' : 'bg-stone-400'}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------- CONFIRMATION MODAL: REMOVE MEMBER ------------------- */}
+      {memberToRemove && (
+        <div
+          className="fixed inset-0 z-60 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setMemberToRemove(null)}
+        >
+          <div
+            className="bg-stone-900 border-2 border-rose-500/80 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-full bg-rose-500/20 border-2 border-rose-500 text-rose-400 flex items-center justify-center mx-auto mb-4">
+              <UserX className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-black text-white mb-2">Remove Member?</h3>
+            <p className="text-sm text-stone-300 mb-6 leading-relaxed">
+              Are you sure you want to remove <span className="font-bold text-white">"{memberToRemove.name}"</span> from the household? They will no longer have access to the board from their mobile device.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setMemberToRemove(null)}
+                className="py-3 px-4 rounded-xl font-bold text-sm bg-stone-800 text-stone-300 hover:bg-stone-700 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playPinPopSound();
+                  storageSync.removeMember(memberToRemove.id);
+                  setMemberToRemove(null);
+                }}
+                className="py-3 px-4 rounded-xl font-black text-sm bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-900/40 transition-colors cursor-pointer"
+              >
+                Remove
               </button>
             </div>
           </div>

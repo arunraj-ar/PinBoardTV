@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Check, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Sparkles, Check, ArrowRight } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { storageSync } from '../services/storageSync';
 import type { NoteColor } from '../types/pinboard';
@@ -134,29 +134,9 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
           <Sparkles className="w-8 h-8" />
         </div>
         <h1 className="text-3xl font-black tracking-tight text-white">
-          {isFirstAdmin ? '👑 Set Up Household Admin' : 'Join PinBoardTV'}
+          {isFirstAdmin ? '👑 Set Up Household Admin' : 'Join Household Board'}
         </h1>
-        <p className="text-stone-400 text-sm mt-1.5">
-          {isFirstAdmin
-            ? 'You will become the primary administrator for this household.'
-            : 'One-time zero-password setup. You will never need to log in again!'}
-        </p>
       </div>
-
-      {/* Magic QR Pre-Fill Badge */}
-      {isMagicQrPrefilled && (
-        <div className="mb-6 p-3.5 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl flex items-center space-x-3 text-left">
-          <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
-          <div className="text-xs">
-            <span className="font-bold text-emerald-300 block">
-              Magic QR Code Verified
-            </span>
-            <span className="text-emerald-400/90">
-              Household code <strong>{otpCode}</strong> was auto-filled from your TV scan!
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Join Form Card */}
       <div className="bg-stone-900 border border-white/10 p-6 rounded-3xl shadow-2xl">
@@ -255,10 +235,6 @@ export const MobileJoin: React.FC<MobileJoinProps> = ({ onJoinSuccess }) => {
             )}
           </button>
         </form>
-      </div>
-
-      <div className="mt-8 text-center text-xs text-stone-500">
-        PinBoardTV • Zero-Cost Ambient Living Room Hub
       </div>
     </div>
   );

@@ -158,7 +158,8 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         return jsonResponse(400, { error: 'Invalid or expired 6-digit passkey. Please check the TV screen.' });
       }
 
-      const isFirstMember = state.members.length === 0;
+      const hasHost = state.members.some((m) => m.role === 'HOST');
+      const isFirstMember = state.members.length === 0 || !hasHost;
       const isSameWifi = Boolean(state.hostPublicIp && clientIp && state.hostPublicIp === clientIp);
       const memberId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const memberToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
@@ -195,6 +196,22 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         role: newMember.role,
         isSameWifi,
       });
+    }
+
+    if (rawPath.startsWith('/household/members/') && method === 'DELETE') {
+      const memberId = rawPath.replace('/household/members/', '').trim();
+      const householdId = event.queryStringParameters?.householdId || event.headers['x-household-id'] || body.householdId;
+      if (!householdId || !memberId) {
+        return jsonResponse(400, { error: 'Missing householdId or memberId' });
+      }
+
+      await deleteMember(householdId, memberId);
+      await broadcastToHousehold(householdId, {
+        type: 'MEMBER_REMOVED',
+        payload: { memberId },
+      });
+
+      return jsonResponse(200, { success: true, memberId });
     }
 
     if (rawPath === '/household/update-name' && method === 'POST') {
